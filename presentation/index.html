@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>동시성 제어와 자바 스레드 - CS 스터디</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.0.4/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.0.4/dist/theme/black.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.0.4/plugin/highlight/monokai.css">
+  <style>
+    :root {
+      --r-background-color: #1a1a1a;
+      --r-main-font: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --r-heading-font: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --r-main-color: #f0f0f0;
+      --r-heading-color: #ffffff;
+      --r-link-color: #42b983;
+      --r-link-color-hover: #5fd89e;
+    }
+
+    .reveal h1,
+    .reveal h2,
+    .reveal h3,
+    .reveal h4 {
+      text-transform: none;
+      font-weight: 700;
+    }
+
+    .reveal pre {
+      width: 100%;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.15);
+    }
+
+    .reveal pre code {
+      max-height: 500px;
+      font-size: 0.55em;
+      line-height: 1.4;
+    }
+
+    .reveal code {
+      font-family: 'Fira Code', 'Courier New', monospace;
+    }
+
+    .emoji {
+      font-family: 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
+    }
+
+    .highlight-red {
+      color: #e74c3c;
+      font-weight: bold;
+    }
+
+    .highlight-green {
+      color: #27ae60;
+      font-weight: bold;
+    }
+
+    .highlight-blue {
+      color: #3498db;
+      font-weight: bold;
+    }
+
+    .box {
+      background: rgba(255, 255, 255, 0.05);
+      border-left: 4px solid #42b983;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 5px;
+    }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin: 20px 0;
+    }
+
+    .comparison-item {
+      background: rgba(255, 255, 255, 0.05);
+      padding: 15px;
+      border-radius: 8px;
+    }
+
+    .timeline {
+      text-align: left;
+      font-family: monospace;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 15px;
+      border-radius: 5px;
+      margin: 10px 0;
+    }
+
+    table {
+      font-size: 0.8em;
+    }
+
+    table th {
+      background: rgba(66, 185, 131, 0.2);
+    }
+
+    table td {
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
