@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import Reveal from 'reveal.js'
 import 'reveal.js/dist/reveal.css'
 import 'reveal.js/dist/theme/black.css'
@@ -14,7 +14,12 @@ import Act4Slides from './slides/Act4Slides'
 import ClosingSlides from './slides/ClosingSlides'
 
 function App() {
+  const deckRef = useRef(null)
+
   useEffect(() => {
+    // Prevent double initialization in React StrictMode
+    if (deckRef.current) return
+
     const deck = new Reveal({
       plugins: [Highlight],
       hash: true,
@@ -25,15 +30,24 @@ function App() {
       width: 1280,
       height: 720,
       margin: 0.04,
+      highlight: {
+        highlightOnLoad: true,
+        escapeHTML: true,
+      },
     })
 
-    deck.initialize()
+    deck.initialize().then(() => {
+      deckRef.current = deck
+    })
 
     return () => {
-      try {
-        deck.destroy()
-      } catch (e) {
-        // ignore
+      if (deckRef.current) {
+        try {
+          deckRef.current.destroy()
+          deckRef.current = null
+        } catch (e) {
+          // ignore
+        }
       }
     }
   }, [])

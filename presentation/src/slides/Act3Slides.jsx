@@ -122,18 +122,20 @@ Thread 200: User 200 요청 처리
           <div className="box" style={{ marginTop: '30px' }}>
             <h4>비용</h4>
             <table style={{ fontSize: '0.8em', width: '100%' }}>
-              <tr>
-                <td>생성</td>
-                <td>~1ms</td>
-              </tr>
-              <tr>
-                <td>메모리</td>
-                <td>1MB per thread</td>
-              </tr>
-              <tr>
-                <td>컨텍스트 스위칭</td>
-                <td>5-10μs</td>
-              </tr>
+              <tbody>
+                <tr>
+                  <td>생성</td>
+                  <td>~1ms</td>
+                </tr>
+                <tr>
+                  <td>메모리</td>
+                  <td>1MB per thread</td>
+                </tr>
+                <tr>
+                  <td>컨텍스트 스위칭</td>
+                  <td>5-10μs</td>
+                </tr>
+              </tbody>
             </table>
           </div>
           <p style={{ marginTop: '30px', fontSize: '1.1em' }}>
