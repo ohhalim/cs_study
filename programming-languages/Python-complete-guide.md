@@ -2388,6 +2388,788 @@ class Context:
         return self._strategy.execute(data)
 ```
 
+### 20.6 Python 3.11/3.12 최신 기능
+
+**Python 3.11의 핵심 기능**
+
+```python
+# 1. Exception Groups - 여러 예외를 그룹화
+# PEP 654: Exception Groups and except*
+
+def process_tasks():
+    exceptions = []
+
+    try:
+        # 여러 작업 수행
+        task1()
+        task2()
+        task3()
+    except Exception as e:
+        exceptions.append(e)
+
+    if exceptions:
+        raise ExceptionGroup("Multiple errors occurred", exceptions)
+
+# 새로운 except* 문법으로 처리
+try:
+    process_tasks()
+except* ValueError as eg:
+    # ValueError만 처리
+    print(f"Value errors: {eg.exceptions}")
+except* TypeError as eg:
+    # TypeError만 처리
+    print(f"Type errors: {eg.exceptions}")
+
+# 실전 예시: 병렬 작업 에러 처리
+import asyncio
+
+async def fetch_urls(urls):
+    async with asyncio.TaskGroup() as tg:
+        tasks = [tg.create_task(fetch(url)) for url in urls]
+
+    # 하나라도 실패하면 ExceptionGroup 발생
+    return [task.result() for task in tasks]
+
+try:
+    results = asyncio.run(fetch_urls(urls))
+except* aiohttp.ClientError as eg:
+    print(f"네트워크 에러: {eg.exceptions}")
+except* asyncio.TimeoutError as eg:
+    print(f"타임아웃: {eg.exceptions}")
+
+# 2. TaskGroup - asyncio 태스크 그룹 (Python 3.11)
+async def main():
+    async with asyncio.TaskGroup() as tg:
+        task1 = tg.create_task(fetch_data(1))
+        task2 = tg.create_task(fetch_data(2))
+        task3 = tg.create_task(fetch_data(3))
+
+    # TaskGroup 컨텍스트가 끝나면 모든 태스크 완료 대기
+    # 하나라도 실패하면 나머지 취소 및 ExceptionGroup 발생
+    print("모든 태스크 완료")
+
+# 이전 방식 (Python 3.10 이하)
+tasks = [
+    asyncio.create_task(fetch_data(1)),
+    asyncio.create_task(fetch_data(2)),
+    asyncio.create_task(fetch_data(3))
+]
+results = await asyncio.gather(*tasks, return_exceptions=True)
+
+# 3. tomllib - 내장 TOML 파서 (Python 3.11)
+import tomllib
+
+# TOML 파일 읽기
+with open("config.toml", "rb") as f:
+    config = tomllib.load(f)
+
+print(config["database"]["host"])
+print(config["server"]["port"])
+
+# TOML 문자열 파싱
+toml_string = """
+[server]
+host = "localhost"
+port = 8080
+
+[database]
+name = "mydb"
+user = "admin"
+"""
+
+config = tomllib.loads(toml_string)
+
+# 4. 성능 향상 - Faster CPython
+# Python 3.11은 3.10 대비 평균 25% 빠름
+# - Adaptive specialized bytecode interpreter
+# - Faster function calls
+# - Inline caching
+
+# 5. Enhanced error messages
+# 더 정확한 에러 메시지
+data = {"key": {"nested": {"value": 42}}}
+# print(data["key"]["nested"]["valu"])  # Python 3.11+
+# KeyError: 'valu'. Did you mean: 'value'?
+
+# 6. Self type annotation
+from typing import Self
+
+class Builder:
+    def __init__(self):
+        self.value = 0
+
+    def add(self, n: int) -> Self:  # Self는 현재 클래스 타입
+        self.value += n
+        return self
+
+    def multiply(self, n: int) -> Self:
+        self.value *= n
+        return self
+
+builder = Builder().add(10).multiply(2).add(5)
+```
+
+**Python 3.12의 핵심 기능**
+
+```python
+# 1. PEP 701 - f-string 개선
+# 더 강력한 f-string 표현식
+
+# 중첩 따옴표 지원
+data = {"name": "Alice"}
+message = f"User: {data["name"]}"  # Python 3.12+에서 가능!
+
+# 여러 줄 표현식
+result = f"""
+Result: {
+    sum(
+        x * 2
+        for x in range(10)
+        if x % 2 == 0
+    )
+}
+"""
+
+# 백슬래시 지원
+path = f"C:\\Users\\{user}\\Documents"  # Python 3.12+에서 가능
+
+# 2. Type Parameter Syntax (PEP 695)
+# 새로운 제네릭 문법
+
+# 이전 방식 (Python 3.11 이하)
+from typing import TypeVar, Generic
+
+T = TypeVar('T')
+
+class Stack(Generic[T]):
+    def __init__(self) -> None:
+        self.items: list[T] = []
+
+# 새로운 방식 (Python 3.12+)
+class Stack[T]:  # 간결한 문법!
+    def __init__(self) -> None:
+        self.items: list[T] = []
+
+    def push(self, item: T) -> None:
+        self.items.append(item)
+
+    def pop(self) -> T:
+        return self.items.pop()
+
+# 함수 제네릭도 간결해짐
+def first[T](items: list[T]) -> T:
+    return items[0]
+
+# 타입 별칭도 개선
+type Point = tuple[float, float]
+type Matrix[T] = list[list[T]]
+
+point: Point = (1.0, 2.0)
+matrix: Matrix[int] = [[1, 2], [3, 4]]
+
+# 3. @override 데코레이터 (PEP 698)
+from typing import override
+
+class Base:
+    def method(self) -> None:
+        pass
+
+class Derived(Base):
+    @override  # 명시적으로 오버라이드 표시
+    def method(self) -> None:
+        print("Overridden")
+
+    # @override
+    # def typo_method(self) -> None:  # 에러! 부모 클래스에 없음
+    #     pass
+
+# 4. Per-Interpreter GIL (PEP 684)
+# 서브 인터프리터마다 독립적인 GIL
+# (실험적 기능, 향후 진정한 병렬 실행 가능성)
+
+# 5. 성능 향상
+# - Python 3.12는 3.11 대비 추가 5% 빠름
+# - Comprehension 인라이닝
+# - 개선된 에러 메시지
+
+# 6. sys.monitoring - 새로운 모니터링 API
+import sys
+
+def trace_function(code, instruction_offset, event, arg):
+    print(f"Event: {event}, Line: {code.co_firstlineno + instruction_offset}")
+
+sys.monitoring.use_tool_id(sys.monitoring.PROFILER_ID, "my_tool")
+sys.monitoring.register_callback(
+    sys.monitoring.PROFILER_ID,
+    sys.monitoring.events.LINE,
+    trace_function
+)
+
+# 7. pathlib improvements
+from pathlib import Path
+
+# Path.walk() - os.walk() 대체
+for dirpath, dirnames, filenames in Path(".").walk():
+    print(dirpath)
+
+# 8. SQLite 개선
+import sqlite3
+
+# autocommit 모드
+con = sqlite3.connect("example.db", autocommit=True)
+```
+
+**버전별 주요 기능 정리:**
+
+| 기능 | Python 3.10 | Python 3.11 | Python 3.12 |
+|------|-------------|-------------|-------------|
+| 예외 그룹 | ❌ | ✅ ExceptionGroup, except* | ✅ |
+| TOML 지원 | 외부 라이브러리 | ✅ tomllib | ✅ |
+| TaskGroup | ❌ | ✅ asyncio.TaskGroup | ✅ |
+| f-string | 제한적 | 개선됨 | ✅ 중첩 따옴표, 백슬래시 |
+| 제네릭 문법 | TypeVar + Generic | TypeVar + Generic | ✅ `class[T]` 문법 |
+| @override | ❌ | ❌ | ✅ |
+| 성능 | 기준 | +25% | +30% |
+| Self 타입 | typing_extensions | ✅ | ✅ |
+
+**실전 활용 예시:**
+
+```python
+# Python 3.12 스타일 비동기 에러 처리
+import asyncio
+from typing import override
+
+class DataProcessor[T]:
+    """제네릭 데이터 프로세서"""
+
+    def __init__(self, data: list[T]) -> None:
+        self.data = data
+
+    async def process_all(self) -> list[T]:
+        """모든 데이터 병렬 처리"""
+        try:
+            async with asyncio.TaskGroup() as tg:
+                tasks = [
+                    tg.create_task(self.process_item(item))
+                    for item in self.data
+                ]
+            return [task.result() for task in tasks]
+
+        except* ValueError as eg:
+            print(f"값 에러 발생: {len(eg.exceptions)}개")
+            for exc in eg.exceptions:
+                print(f"  - {exc}")
+            raise
+
+        except* ConnectionError as eg:
+            print(f"연결 에러: {len(eg.exceptions)}개")
+            raise
+
+    async def process_item(self, item: T) -> T:
+        """단일 아이템 처리"""
+        # 처리 로직
+        await asyncio.sleep(0.1)
+        return item
+
+class CustomProcessor[T](DataProcessor[T]):
+    @override
+    async def process_item(self, item: T) -> T:
+        """커스텀 처리 로직"""
+        print(f"Processing: {item}")
+        return await super().process_item(item)
+
+# 사용
+processor = CustomProcessor([1, 2, 3, 4, 5])
+results = asyncio.run(processor.process_all())
+```
+
+### 20.7 테스팅 프레임워크
+
+**unittest - 표준 라이브러리 테스팅**
+
+```python
+import unittest
+
+class TestMathOperations(unittest.TestCase):
+    def setUp(self):
+        """각 테스트 전에 실행"""
+        self.numbers = [1, 2, 3, 4, 5]
+
+    def tearDown(self):
+        """각 테스트 후에 실행"""
+        self.numbers = None
+
+    def test_addition(self):
+        """덧셈 테스트"""
+        result = sum(self.numbers)
+        self.assertEqual(result, 15)
+
+    def test_list_length(self):
+        """리스트 길이 테스트"""
+        self.assertEqual(len(self.numbers), 5)
+
+    def test_contains(self):
+        """포함 여부 테스트"""
+        self.assertIn(3, self.numbers)
+        self.assertNotIn(10, self.numbers)
+
+    def test_exception(self):
+        """예외 테스트"""
+        with self.assertRaises(ZeroDivisionError):
+            1 / 0
+
+    @unittest.skip("테스트 건너뛰기")
+    def test_skipped(self):
+        self.fail("이 테스트는 실행되지 않음")
+
+    @unittest.skipIf(sys.platform.startswith("win"), "Windows에서만 건너뛰기")
+    def test_conditional_skip(self):
+        pass
+
+# 실행
+if __name__ == '__main__':
+    unittest.main()
+```
+
+**pytest - 가장 인기있는 테스팅 프레임워크**
+
+```python
+import pytest
+
+# 기본 테스트 (assert 문만 사용)
+def test_addition():
+    assert 1 + 1 == 2
+    assert sum([1, 2, 3]) == 6
+
+def test_string_operations():
+    text = "hello world"
+    assert "hello" in text
+    assert text.upper() == "HELLO WORLD"
+
+# Fixture - 테스트 데이터 준비
+@pytest.fixture
+def sample_data():
+    """테스트 데이터 생성"""
+    return [1, 2, 3, 4, 5]
+
+@pytest.fixture
+def database():
+    """데이터베이스 연결 (설정/해제)"""
+    db = connect_database()
+    yield db  # 테스트에 제공
+    db.close()  # 테스트 후 정리
+
+def test_using_fixture(sample_data):
+    """Fixture 사용 예시"""
+    assert len(sample_data) == 5
+    assert sum(sample_data) == 15
+
+# Parametrize - 여러 입력값으로 테스트
+@pytest.mark.parametrize("input,expected", [
+    (1, 2),
+    (2, 4),
+    (3, 6),
+    (4, 8),
+])
+def test_double(input, expected):
+    assert input * 2 == expected
+
+# 여러 매개변수 조합
+@pytest.mark.parametrize("x", [1, 2, 3])
+@pytest.mark.parametrize("y", [10, 20])
+def test_multiplication(x, y):
+    assert x * y == y * x
+
+# 예외 테스트
+def test_exception():
+    with pytest.raises(ValueError):
+        int("not a number")
+
+    with pytest.raises(ValueError, match="invalid literal"):
+        int("abc")
+
+# 경고 테스트
+def test_warning():
+    with pytest.warns(UserWarning):
+        warnings.warn("deprecated", UserWarning)
+
+# 마커 - 테스트 그룹화
+@pytest.mark.slow
+def test_slow_operation():
+    time.sleep(2)
+    assert True
+
+@pytest.mark.integration
+def test_database_integration(database):
+    result = database.query("SELECT 1")
+    assert result is not None
+
+# 실행: pytest
+# 특정 마커만: pytest -m slow
+# 마커 제외: pytest -m "not slow"
+```
+
+**pytest 고급 기능**
+
+```python
+# 1. Fixture Scope - 공유 수준 설정
+@pytest.fixture(scope="module")
+def expensive_resource():
+    """모듈 전체에서 한 번만 생성"""
+    print("Setting up expensive resource")
+    resource = create_expensive_resource()
+    yield resource
+    print("Tearing down expensive resource")
+
+@pytest.fixture(scope="session")
+def database_connection():
+    """전체 테스트 세션에서 한 번만 연결"""
+    conn = connect_to_database()
+    yield conn
+    conn.close()
+
+# 2. Autouse Fixtures - 자동으로 모든 테스트에 적용
+@pytest.fixture(autouse=True)
+def reset_state():
+    """모든 테스트 전후에 자동 실행"""
+    global_state.reset()
+    yield
+    global_state.cleanup()
+
+# 3. Fixture 체이닝
+@pytest.fixture
+def user_data():
+    return {"name": "Alice", "age": 25}
+
+@pytest.fixture
+def user(user_data):
+    """다른 fixture 사용"""
+    return User(**user_data)
+
+@pytest.fixture
+def authenticated_user(user):
+    """fixture 체이닝"""
+    user.authenticate()
+    return user
+
+# 4. Monkeypatch - 함수/객체 대체
+def test_with_monkeypatch(monkeypatch):
+    # 환경 변수 설정
+    monkeypatch.setenv("API_KEY", "test_key")
+
+    # 함수 대체
+    def mock_get_user():
+        return {"id": 1, "name": "Test User"}
+
+    monkeypatch.setattr("mymodule.get_user", mock_get_user)
+
+    # 딕셔너리 아이템 설정
+    monkeypatch.setitem(os.environ, "DEBUG", "1")
+
+# 5. tmpdir / tmp_path - 임시 디렉토리
+def test_file_operations(tmp_path):
+    # tmp_path는 pathlib.Path 객체
+    test_file = tmp_path / "test.txt"
+    test_file.write_text("Hello, World!")
+
+    content = test_file.read_text()
+    assert content == "Hello, World!"
+
+# 6. Capsys - 출력 캡처
+def test_print_output(capsys):
+    print("Hello")
+    print("World", file=sys.stderr)
+
+    captured = capsys.readouterr()
+    assert captured.out == "Hello\n"
+    assert captured.err == "World\n"
+
+# 7. 비교 출력 개선
+def test_dict_comparison():
+    result = {"name": "Alice", "age": 25, "city": "NYC"}
+    expected = {"name": "Alice", "age": 26, "city": "NYC"}
+    assert result == expected  # pytest가 차이점을 자세히 보여줌
+
+# 8. 커스텀 마커 정의
+# pytest.ini 또는 pyproject.toml
+"""
+[pytest]
+markers =
+    slow: marks tests as slow
+    integration: marks tests as integration tests
+    unit: marks tests as unit tests
+"""
+
+# 9. 플러그인 - pytest-cov (코드 커버리지)
+# pytest --cov=mymodule --cov-report=html
+
+# 10. 플러그인 - pytest-asyncio (비동기 테스트)
+@pytest.mark.asyncio
+async def test_async_function():
+    result = await async_operation()
+    assert result == expected_value
+```
+
+**테스트 구조 모범 사례**
+
+```python
+# 프로젝트 구조
+"""
+myproject/
+├── src/
+│   ├── __init__.py
+│   ├── calculator.py
+│   └── user.py
+├── tests/
+│   ├── __init__.py
+│   ├── conftest.py          # 공유 fixtures
+│   ├── test_calculator.py
+│   └── test_user.py
+├── pytest.ini
+└── pyproject.toml
+"""
+
+# conftest.py - 공유 fixtures
+import pytest
+from myapp import create_app, init_database
+
+@pytest.fixture(scope="session")
+def app():
+    """애플리케이션 인스턴스"""
+    app = create_app(testing=True)
+    return app
+
+@pytest.fixture(scope="session")
+def database():
+    """테스트 데이터베이스"""
+    db = init_database(":memory:")
+    yield db
+    db.close()
+
+@pytest.fixture
+def client(app):
+    """테스트 클라이언트"""
+    return app.test_client()
+
+# test_calculator.py - AAA 패턴 (Arrange-Act-Assert)
+def test_calculator_addition():
+    # Arrange - 준비
+    calc = Calculator()
+    a, b = 5, 3
+
+    # Act - 실행
+    result = calc.add(a, b)
+
+    # Assert - 검증
+    assert result == 8
+
+# Given-When-Then 패턴
+def test_user_registration():
+    # Given (준비)
+    user_data = {
+        "username": "alice",
+        "email": "alice@example.com",
+        "password": "secure123"
+    }
+
+    # When (실행)
+    user = User.register(**user_data)
+
+    # Then (검증)
+    assert user.username == "alice"
+    assert user.email == "alice@example.com"
+    assert user.password != "secure123"  # 해시되어야 함
+    assert user.is_active is True
+```
+
+**Mock과 Patch**
+
+```python
+from unittest.mock import Mock, MagicMock, patch, call
+
+# 1. Mock 기본
+def test_with_mock():
+    # Mock 객체 생성
+    mock_api = Mock()
+    mock_api.get_user.return_value = {"id": 1, "name": "Alice"}
+
+    # 사용
+    result = mock_api.get_user(123)
+    assert result["name"] == "Alice"
+
+    # 호출 확인
+    mock_api.get_user.assert_called_once_with(123)
+
+# 2. Patch - 실제 함수 대체
+@patch('requests.get')
+def test_api_call(mock_get):
+    # requests.get을 mock으로 대체
+    mock_response = Mock()
+    mock_response.json.return_value = {"status": "ok"}
+    mock_response.status_code = 200
+    mock_get.return_value = mock_response
+
+    # 테스트 실행
+    result = fetch_data("https://api.example.com")
+
+    # 검증
+    assert result["status"] == "ok"
+    mock_get.assert_called_once_with("https://api.example.com")
+
+# 3. Context manager로 patch
+def test_with_context_patch():
+    with patch('os.path.exists') as mock_exists:
+        mock_exists.return_value = True
+        assert check_file_exists("test.txt") is True
+
+# 4. 여러 함수 patch
+@patch('mymodule.function_a')
+@patch('mymodule.function_b')
+def test_multiple_patches(mock_b, mock_a):  # 역순!
+    mock_a.return_value = 10
+    mock_b.return_value = 20
+    # 테스트...
+
+# 5. Side effects - 예외 발생
+def test_exception_handling():
+    mock_api = Mock()
+    mock_api.get_user.side_effect = ConnectionError("Network error")
+
+    with pytest.raises(ConnectionError):
+        fetch_user_data(mock_api, 123)
+
+# 6. Side effects - 여러 반환값
+def test_multiple_calls():
+    mock_random = Mock()
+    mock_random.randint.side_effect = [1, 5, 3, 9]
+
+    assert mock_random.randint() == 1
+    assert mock_random.randint() == 5
+    assert mock_random.randint() == 3
+
+# 7. MagicMock - 매직 메서드 지원
+def test_with_magic_mock():
+    mock_obj = MagicMock()
+    mock_obj.__len__.return_value = 10
+    mock_obj.__getitem__.return_value = "item"
+
+    assert len(mock_obj) == 10
+    assert mock_obj[0] == "item"
+
+# 8. Spy - 실제 함수 호출하면서 감시
+def test_spy():
+    original_func = lambda x: x * 2
+
+    with patch('mymodule.double', wraps=original_func) as spy:
+        result = double(5)
+        assert result == 10  # 실제로 동작함
+        spy.assert_called_once_with(5)  # 호출도 확인 가능
+```
+
+**테스트 실행 옵션**
+
+```bash
+# 기본 실행
+pytest
+
+# 상세 출력
+pytest -v
+
+# 특정 파일/디렉토리
+pytest tests/test_user.py
+pytest tests/integration/
+
+# 특정 테스트만
+pytest tests/test_user.py::test_login
+
+# 패턴 매칭
+pytest -k "test_user"  # 이름에 "test_user" 포함
+pytest -k "not slow"   # slow 제외
+
+# 마커 사용
+pytest -m "slow"
+pytest -m "not slow and integration"
+
+# 실패 시 즉시 중단
+pytest -x
+
+# 처음 N개 실패 후 중단
+pytest --maxfail=3
+
+# 마지막 실패 테스트만 재실행
+pytest --lf
+
+# 실패한 테스트 먼저, 그 다음 나머지
+pytest --ff
+
+# 병렬 실행 (pytest-xdist)
+pytest -n 4  # 4개 프로세스
+
+# 커버리지 (pytest-cov)
+pytest --cov=mymodule --cov-report=html
+
+# 출력 캡처 비활성화 (디버깅용)
+pytest -s
+```
+
+**실전 예시: Flask 애플리케이션 테스트**
+
+```python
+# conftest.py
+import pytest
+from myapp import create_app, db
+from myapp.models import User
+
+@pytest.fixture(scope="session")
+def app():
+    app = create_app("testing")
+    with app.app_context():
+        db.create_all()
+        yield app
+        db.drop_all()
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
+
+@pytest.fixture
+def auth_client(client):
+    """인증된 클라이언트"""
+    user = User(username="test", email="test@example.com")
+    user.set_password("password")
+    db.session.add(user)
+    db.session.commit()
+
+    client.post("/login", json={
+        "username": "test",
+        "password": "password"
+    })
+    return client
+
+# test_api.py
+def test_homepage(client):
+    response = client.get("/")
+    assert response.status_code == 200
+
+def test_user_registration(client):
+    response = client.post("/register", json={
+        "username": "alice",
+        "email": "alice@example.com",
+        "password": "secure123"
+    })
+    assert response.status_code == 201
+    assert "id" in response.json
+
+def test_protected_route(auth_client):
+    response = auth_client.get("/api/profile")
+    assert response.status_code == 200
+    assert response.json["username"] == "test"
+
+def test_unauthorized_access(client):
+    response = client.get("/api/profile")
+    assert response.status_code == 401
+```
+
 ---
 
 ## 결론

@@ -2030,29 +2030,426 @@ async fn blocking_task() {
 
 ## 20. 고급 기능과 패턴
 
-### 20.1 매크로
+### 20.1 매크로 - 완벽 가이드
+
+**선언적 매크로 (Declarative Macros)**
 
 ```rust
-// 선언적 매크로
-macro_rules! vec_macro {
+// 기본 선언적 매크로
+macro_rules! say_hello {
+    () => {
+        println!("Hello!");
+    };
+}
+
+// 매개변수가 있는 매크로
+macro_rules! create_function {
+    ($func_name:ident) => {
+        fn $func_name() {
+            println!("Function {:?} called", stringify!($func_name));
+        }
+    };
+}
+
+create_function!(foo);
+foo();  // "Function foo called"
+
+// 반복 패턴
+macro_rules! vec_of_strings {
     ( $( $x:expr ),* ) => {
         {
             let mut temp_vec = Vec::new();
             $(
-                temp_vec.push($x);
+                temp_vec.push($x.to_string());
             )*
             temp_vec
         }
     };
 }
 
-// 절차적 매크로
-use proc_macro;
+let v = vec_of_strings!["hello", "world"];
+
+// 다양한 패턴 매칭
+macro_rules! calculate {
+    (eval $e:expr) => {
+        {
+            let val: usize = $e;
+            println!("{} = {}", stringify!($e), val);
+        }
+    };
+
+    (eval $e:expr, $(eval $es:expr),+) => {
+        {
+            calculate! { eval $e }
+            calculate! { $(eval $es),+ }
+        }
+    };
+}
+
+calculate! {
+    eval 1 + 2,
+    eval 3 + 4,
+    eval 5 + 6
+}
+
+// 실전 예시: min! 매크로
+macro_rules! min {
+    ($x:expr) => ($x);
+    ($x:expr, $($y:expr),+) => (
+        std::cmp::min($x, min!($($y),+))
+    )
+}
+
+let m = min!(5, 3, 8, 1, 9);  // 1
+```
+
+**절차적 매크로 (Procedural Macros) - 3가지 종류**
+
+**1. Derive 매크로 - 구조체/열거형에 트레이트 자동 구현**
+
+```rust
+// my_macro/src/lib.rs (별도 크레이트)
+use proc_macro::TokenStream;
+use quote::quote;
+use syn::{parse_macro_input, DeriveInput};
 
 #[proc_macro_derive(HelloMacro)]
 pub fn hello_macro_derive(input: TokenStream) -> TokenStream {
+    // 입력을 AST로 파싱
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = input.ident;
+
+    // 구현 코드 생성
+    let expanded = quote! {
+        impl HelloMacro for #name {
+            fn hello_macro() {
+                println!("Hello from {}!", stringify!(#name));
+            }
+        }
+    };
+
+    TokenStream::from(expanded)
+}
+
+// 사용
+#[derive(HelloMacro)]
+struct Pancakes;
+
+Pancakes::hello_macro();  // "Hello from Pancakes!"
+
+// 복잡한 예시: Builder 패턴 자동 생성
+#[proc_macro_derive(Builder, attributes(builder))]
+pub fn derive_builder(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = &input.ident;
+    let builder_name = format!("{}Builder", name);
+    let builder_ident = syn::Ident::new(&builder_name, name.span());
+
+    let fields = if let syn::Data::Struct(syn::DataStruct {
+        fields: syn::Fields::Named(ref fields),
+        ..
+    }) = input.data
+    {
+        &fields.named
+    } else {
+        panic!("Builder only works on structs with named fields");
+    };
+
+    let builder_fields: Vec<_> = fields
+        .iter()
+        .map(|f| {
+            let name = &f.ident;
+            let ty = &f.ty;
+            quote! { #name: Option<#ty> }
+        })
+        .collect();
+
+    let methods: Vec<_> = fields
+        .iter()
+        .map(|f| {
+            let name = &f.ident;
+            let ty = &f.ty;
+            quote! {
+                pub fn #name(mut self, #name: #ty) -> Self {
+                    self.#name = Some(#name);
+                    self
+                }
+            }
+        })
+        .collect();
+
+    let build_fields: Vec<_> = fields
+        .iter()
+        .map(|f| {
+            let name = &f.ident;
+            quote! {
+                #name: self.#name.ok_or(concat!(stringify!(#name), " is not set"))?
+            }
+        })
+        .collect();
+
+    let expanded = quote! {
+        pub struct #builder_ident {
+            #(#builder_fields),*
+        }
+
+        impl #builder_ident {
+            #(#methods)*
+
+            pub fn build(self) -> Result<#name, &'static str> {
+                Ok(#name {
+                    #(#build_fields),*
+                })
+            }
+        }
+
+        impl #name {
+            pub fn builder() -> #builder_ident {
+                #builder_ident {
+                    #(#name: None),*
+                }
+            }
+        }
+    };
+
+    TokenStream::from(expanded)
+}
+
+// 사용
+#[derive(Builder)]
+struct User {
+    name: String,
+    age: u32,
+    email: String,
+}
+
+let user = User::builder()
+    .name("Alice".to_string())
+    .age(25)
+    .email("alice@example.com".to_string())
+    .build()
+    .unwrap();
+```
+
+**2. Attribute 매크로 - 함수/구조체에 어트리뷰트 추가**
+
+```rust
+#[proc_macro_attribute]
+pub fn route(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(attr as AttributeArgs);
+    let input = parse_macro_input!(item as ItemFn);
+
+    // 경로 추출
+    let path = match &args[0] {
+        NestedMeta::Lit(Lit::Str(lit)) => lit.value(),
+        _ => panic!("Expected string literal"),
+    };
+
+    let fn_name = &input.sig.ident;
+    let fn_block = &input.block;
+
+    let expanded = quote! {
+        fn #fn_name() -> Response {
+            // 라우트 등록 코드
+            register_route(#path, || {
+                #fn_block
+            });
+            // ...
+        }
+    };
+
+    TokenStream::from(expanded)
+}
+
+// 사용
+#[route("/users")]
+fn get_users() -> Response {
     // ...
 }
+
+// 고급 예시: 시간 측정 매크로
+#[proc_macro_attribute]
+pub fn timed(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as ItemFn);
+    let fn_name = &input.sig.ident;
+    let fn_vis = &input.sig.vis;
+    let fn_sig = &input.sig;
+    let fn_block = &input.block;
+
+    let expanded = quote! {
+        #fn_vis #fn_sig {
+            let start = std::time::Instant::now();
+            let result = (|| #fn_block)();
+            let duration = start.elapsed();
+            println!("{} took {:?}", stringify!(#fn_name), duration);
+            result
+        }
+    };
+
+    TokenStream::from(expanded)
+}
+
+// 사용
+#[timed]
+fn expensive_computation() -> i32 {
+    // 복잡한 계산
+    42
+}
+// 출력: "expensive_computation took 1.234ms"
+```
+
+**3. Function-like 매크로 - 함수처럼 호출되는 매크로**
+
+```rust
+#[proc_macro]
+pub fn sql(input: TokenStream) -> TokenStream {
+    // SQL 쿼리 파싱 및 검증
+    let sql_query = input.to_string();
+
+    // 컴파일 타임에 SQL 문법 검사
+    if !is_valid_sql(&sql_query) {
+        panic!("Invalid SQL query");
+    }
+
+    // 쿼리 실행 코드 생성
+    let expanded = quote! {
+        {
+            let query = #sql_query;
+            execute_query(query)
+        }
+    };
+
+    TokenStream::from(expanded)
+}
+
+// 사용
+let users = sql!(SELECT * FROM users WHERE age > 18);
+
+// 고급 예시: JSON 매크로
+#[proc_macro]
+pub fn json(input: TokenStream) -> TokenStream {
+    let input_str = input.to_string();
+
+    // JSON 파싱 및 Rust 코드 생성
+    let expanded = quote! {
+        serde_json::json!(#input_str)
+    };
+
+    TokenStream::from(expanded)
+}
+
+// 사용
+let config = json!({
+    "server": {
+        "host": "localhost",
+        "port": 8080
+    },
+    "database": {
+        "url": "postgres://localhost/mydb"
+    }
+});
+```
+
+**실전 프로젝트에서 사용하는 절차적 매크로 예시**
+
+```rust
+// Serde의 Serialize/Deserialize 자동 구현
+#[derive(Serialize, Deserialize)]
+struct User {
+    name: String,
+    email: String,
+}
+
+// Thiserror의 Error 트레이트 자동 구현
+#[derive(Error, Debug)]
+enum MyError {
+    #[error("File not found: {0}")]
+    FileNotFound(String),
+
+    #[error("Parse error at line {line}")]
+    ParseError { line: usize },
+
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
+}
+
+// Clap의 CLI 인자 파싱
+#[derive(Parser)]
+#[command(name = "myapp")]
+#[command(about = "My application", long_about = None)]
+struct Cli {
+    /// Input file path
+    #[arg(short, long)]
+    input: PathBuf,
+
+    /// Verbose mode
+    #[arg(short, long)]
+    verbose: bool,
+}
+
+// Tokio의 비동기 매크로
+#[tokio::main]
+async fn main() {
+    // 비동기 코드
+}
+```
+
+**매크로 디버깅 팁**
+
+```rust
+// 1. cargo expand로 매크로 확장 결과 보기
+// $ cargo install cargo-expand
+// $ cargo expand
+
+// 2. println! 디버깅
+#[proc_macro_derive(Debug)]
+pub fn derive_debug(input: TokenStream) -> TokenStream {
+    println!("Input: {}", input);
+    // ...
+}
+
+// 3. syn의 pretty print
+use syn::File;
+let syntax_tree: File = syn::parse_file(&source_code).unwrap();
+println!("{:#?}", syntax_tree);
+```
+
+**매크로 작성 모범 사례**
+
+1. **선언적 vs 절차적 선택**:
+   - 간단한 코드 생성 → 선언적 매크로
+   - 복잡한 구문 분석 필요 → 절차적 매크로
+
+2. **에러 메시지 개선**:
+   ```rust
+   if fields.is_empty() {
+       return syn::Error::new(
+           input.span(),
+           "Cannot derive Builder for empty struct"
+       ).to_compile_error().into();
+   }
+   ```
+
+3. **위생적 매크로** (Hygienic Macros):
+   - Rust 매크로는 기본적으로 위생적
+   - 매크로 내 변수명이 외부와 충돌하지 않음
+
+4. **문서화**:
+   ```rust
+   /// Derives a builder pattern for the struct
+   ///
+   /// # Example
+   /// ```
+   /// #[derive(Builder)]
+   /// struct User {
+   ///     name: String,
+   /// }
+   /// ```
+   #[proc_macro_derive(Builder)]
+   pub fn derive_builder(input: TokenStream) -> TokenStream {
+       // ...
+   }
+   ```
 ```
 
 ### 20.2 unsafe Rust - 완전 가이드

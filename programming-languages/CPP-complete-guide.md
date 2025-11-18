@@ -2919,6 +2919,151 @@ int main() {
 // 장점: 헤더보다 빠른 컴파일, 매크로 오염 방지
 ```
 
+**C++23 핵심 기능**
+
+```cpp
+// 1. Deducing this (P0847) - 명시적 객체 매개변수
+struct Counter {
+    int count = 0;
+
+    // this의 타입을 추론
+    void increment(this Counter& self) {
+        self.count++;
+    }
+
+    // const와 non-const 버전을 하나로 통합
+    auto& get(this auto&& self) {
+        return self.count;
+    }
+
+    // CRTP 패턴 불필요
+    template<typename Self>
+    auto clone(this Self&& self) {
+        return std::forward<Self>(self);
+    }
+};
+
+// 재귀 람다가 간결해짐
+auto factorial = [](this auto&& self, int n) -> int {
+    return n <= 1 ? 1 : n * self(n - 1);
+};
+
+std::cout << factorial(5) << "\n";  // 120
+
+// 2. std::expected<T, E> - 에러 처리의 혁명
+#include <expected>
+
+std::expected<int, std::string> divide(int a, int b) {
+    if (b == 0) {
+        return std::unexpected{"Division by zero"};
+    }
+    return a / b;
+}
+
+auto result = divide(10, 2);
+if (result) {
+    std::cout << "Result: " << *result << "\n";
+} else {
+    std::cerr << "Error: " << result.error() << "\n";
+}
+
+// and_then, or_else, transform 지원
+auto result2 = divide(10, 2)
+    .and_then([](int x) { return divide(x, 2); })
+    .transform([](int x) { return x * 10; });
+
+// 3. std::print / std::println (P2093R14) - 안전한 출력
+#include <print>
+
+std::print("Hello, {}!\n", "World");
+std::println("The answer is {}", 42);
+
+// 포맷 지정
+std::println("Hex: {:x}, Binary: {:b}", 255, 255);
+std::println("Float: {:.2f}", 3.14159);
+
+// 4. Multidimensional subscript operator
+struct Matrix {
+    int data[3][3];
+
+    // C++23: 다차원 첨자 연산자
+    int& operator[](int row, int col) {
+        return data[row][col];
+    }
+
+    const int& operator[](int row, int col) const {
+        return data[row][col];
+    }
+};
+
+Matrix m;
+m[0, 1] = 42;  // C++23에서 가능!
+// 이전에는 m[0][1] 또는 m.at(0, 1)만 가능
+
+// 5. if consteval - 컴파일/런타임 분기 (이미 위에 포함됨)
+constexpr int compute(int x) {
+    if consteval {
+        // 컴파일 타임 전용 코드
+        return x * x;
+    } else {
+        // 런타임 코드
+        return x + x;
+    }
+}
+
+// 6. auto(x) / decay-copy
+template<typename T>
+void process(T&& arg) {
+    // auto(arg): 복사본 생성 (참조 제거)
+    auto copy = auto(arg);
+
+    // std::thread 등에서 유용
+    std::thread t([copy = auto(arg)]() {
+        // copy는 값 복사본
+    });
+}
+
+// 7. std::stacktrace - 스택 추적
+#include <stacktrace>
+
+void function_c() {
+    std::cout << std::stacktrace::current() << "\n";
+}
+
+void function_b() { function_c(); }
+void function_a() { function_b(); }
+
+// 8. std::flat_map, std::flat_set - 평평한 컨테이너
+#include <flat_map>
+
+std::flat_map<int, std::string> fm;
+fm[1] = "one";
+fm[2] = "two";
+// 내부적으로 vector 사용, 캐시 친화적
+
+// 9. Range adaptors 개선
+auto result = std::views::zip(vec1, vec2)
+    | std::views::transform([](auto pair) {
+        auto [a, b] = pair;
+        return a + b;
+    });
+
+// 10. Literal suffix for size_t
+auto size = 100uz;  // size_t 타입
+auto ssize = 100z;  // ptrdiff_t 타입
+```
+
+**C++23의 주요 개선점 정리:**
+
+| 기능 | 이전 (C++20) | C++23 |
+|------|-------------|-------|
+| 에러 처리 | `std::optional`, 예외 | `std::expected<T, E>` |
+| 출력 | `std::cout <<`, `printf` | `std::print`, `std::println` |
+| 다차원 첨자 | `m[i][j]` 또는 `m.at(i,j)` | `m[i, j]` |
+| this 추론 | CRTP 패턴 필요 | `deducing this`로 간결화 |
+| 디버깅 | 외부 도구 | `std::stacktrace` 내장 |
+| 컨테이너 | `std::map` (트리) | `std::flat_map` (벡터) |
+
 ---
 
 ## 19. 동시성과 멀티스레딩
