@@ -1237,18 +1237,599 @@ fn main() {
 
 ---
 
-**(계속됩니다...)**
+## 11. 에러 처리
 
-이 Rust 가이드는 계속해서 다음 주제들을 다룹니다:
-- 11. 에러 처리
-- 12. 제네릭
-- 13. 트레이트 (Traits)
-- 14. 라이프타임
-- 15. 클로저
-- 16. 반복자 (Iterators)
-- 17. 스마트 포인터
-- 18. 동시성 (Concurrency)
-- 19. 비동기 프로그래밍
-- 20. 고급 기능과 패턴
+### 11.1 Result와 Option
 
-각 섹션은 Rust의 독특한 개념들을 실전 예제와 함께 심도 있게 다룹니다.
+```rust
+// Result<T, E>
+fn divide(a: i32, b: i32) -> Result<i32, String> {
+    if b == 0 {
+        Err(String::from("division by zero"))
+    } else {
+        Ok(a / b)
+    }
+}
+
+// 사용
+match divide(10, 2) {
+    Ok(result) => println!("Result: {}", result),
+    Err(e) => println!("Error: {}", e),
+}
+
+// unwrap (패닉 가능)
+let result = divide(10, 2).unwrap();
+
+// expect (커스텀 메시지)
+let result = divide(10, 2).expect("Division failed");
+
+// unwrap_or (기본값)
+let result = divide(10, 0).unwrap_or(0);
+
+// ? 연산자
+fn process() -> Result<i32, String> {
+    let a = divide(10, 2)?;  // 에러면 조기 반환
+    let b = divide(20, 4)?;
+    Ok(a + b)
+}
+```
+
+### 11.2 에러 전파
+
+```rust
+use std::fs::File;
+use std::io::{self, Read};
+
+fn read_file(path: &str) -> Result<String, io::Error> {
+    let mut file = File::open(path)?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+    Ok(contents)
+}
+
+// 체이닝
+fn process_file(path: &str) -> Result<usize, io::Error> {
+    Ok(read_file(path)?.len())
+}
+```
+
+### 11.3 커스텀 에러 타입
+
+```rust
+use std::fmt;
+
+#[derive(Debug)]
+enum MyError {
+    IoError(std::io::Error),
+    ParseError(std::num::ParseIntError),
+    Custom(String),
+}
+
+impl fmt::Display for MyError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            MyError::IoError(e) => write!(f, "IO error: {}", e),
+            MyError::ParseError(e) => write!(f, "Parse error: {}", e),
+            MyError::Custom(msg) => write!(f, "Error: {}", msg),
+        }
+    }
+}
+
+impl From<std::io::Error> for MyError {
+    fn from(error: std::io::Error) -> Self {
+        MyError::IoError(error)
+    }
+}
+```
+
+---
+
+## 12. 제네릭
+
+```rust
+// 제네릭 함수
+fn largest<T: PartialOrd>(list: &[T]) -> &T {
+    let mut largest = &list[0];
+    for item in list {
+        if item > largest {
+            largest = item;
+        }
+    }
+    largest
+}
+
+// 제네릭 구조체
+struct Point<T> {
+    x: T,
+    y: T,
+}
+
+impl<T> Point<T> {
+    fn new(x: T, y: T) -> Point<T> {
+        Point { x, y }
+    }
+}
+
+// 특정 타입에 대한 구현
+impl Point<f32> {
+    fn distance_from_origin(&self) -> f32 {
+        (self.x.powi(2) + self.y.powi(2)).sqrt()
+    }
+}
+
+// 여러 타입 매개변수
+struct Pair<T, U> {
+    first: T,
+    second: U,
+}
+```
+
+---
+
+## 13. 트레이트 (Traits)
+
+```rust
+// 트레이트 정의
+trait Summary {
+    fn summarize(&self) -> String;
+
+    // 기본 구현
+    fn default_summary(&self) -> String {
+        String::from("(Read more...)")
+    }
+}
+
+// 트레이트 구현
+struct Article {
+    headline: String,
+    content: String,
+}
+
+impl Summary for Article {
+    fn summarize(&self) -> String {
+        format!("{}: {}", self.headline, self.content)
+    }
+}
+
+// 트레이트 바운드
+fn notify<T: Summary>(item: &T) {
+    println!("{}", item.summarize());
+}
+
+// 여러 트레이트
+fn notify2<T: Summary + Display>(item: &T) {
+    // ...
+}
+
+// where 절
+fn some_function<T, U>(t: &T, u: &U) -> i32
+where
+    T: Display + Clone,
+    U: Clone + Debug,
+{
+    // ...
+}
+
+// 트레이트 반환
+fn returns_summarizable() -> impl Summary {
+    Article {
+        headline: String::from("Title"),
+        content: String::from("Content"),
+    }
+}
+```
+
+---
+
+## 14. 라이프타임
+
+```rust
+// 라이프타임 명시
+fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
+    if x.len() > y.len() {
+        x
+    } else {
+        y
+    }
+}
+
+// 구조체의 라이프타임
+struct ImportantExcerpt<'a> {
+    part: &'a str,
+}
+
+impl<'a> ImportantExcerpt<'a> {
+    fn level(&self) -> i32 {
+        3
+    }
+
+    fn announce_and_return_part(&self, announcement: &str) -> &str {
+        println!("Attention: {}", announcement);
+        self.part
+    }
+}
+
+// 라이프타임 생략 규칙
+// 1. 각 참조 매개변수는 자신만의 라이프타임을 가짐
+// 2. 참조 매개변수가 하나면 반환값도 같은 라이프타임
+// 3. 메서드에서 &self가 있으면 반환값도 같은 라이프타임
+
+// 정적 라이프타임
+let s: &'static str = "I have a static lifetime.";
+```
+
+---
+
+## 15. 클로저
+
+```rust
+// 기본 클로저
+let add_one = |x| x + 1;
+println!("{}", add_one(5));  // 6
+
+// 타입 명시
+let add = |x: i32, y: i32| -> i32 { x + y };
+
+// 환경 캡처
+let x = 4;
+let equal_to_x = |z| z == x;
+println!("{}", equal_to_x(4));  // true
+
+// 이동 캡처
+let x = vec![1, 2, 3];
+let equal_to_x = move |z| z == x;
+// x는 더 이상 사용 불가
+
+// 함수 인자로 클로저
+fn apply<F>(f: F, x: i32) -> i32
+where
+    F: Fn(i32) -> i32,
+{
+    f(x)
+}
+
+let result = apply(|x| x * 2, 5);  // 10
+```
+
+---
+
+## 16. 반복자 (Iterators)
+
+```rust
+// 반복자 생성
+let v = vec![1, 2, 3];
+let mut iter = v.iter();
+
+assert_eq!(iter.next(), Some(&1));
+assert_eq!(iter.next(), Some(&2));
+assert_eq!(iter.next(), Some(&3));
+assert_eq!(iter.next(), None);
+
+// for 루프와 반복자
+for val in &v {
+    println!("{}", val);
+}
+
+// 반복자 어댑터
+let v: Vec<i32> = vec![1, 2, 3];
+let v2: Vec<_> = v.iter().map(|x| x + 1).collect();
+
+// 필터링
+let evens: Vec<_> = v.iter().filter(|x| *x % 2 == 0).collect();
+
+// 체이닝
+let result: i32 = v.iter()
+    .filter(|x| *x % 2 == 0)
+    .map(|x| x * 2)
+    .sum();
+
+// 커스텀 반복자
+struct Counter {
+    count: u32,
+}
+
+impl Counter {
+    fn new() -> Counter {
+        Counter { count: 0 }
+    }
+}
+
+impl Iterator for Counter {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.count < 5 {
+            self.count += 1;
+            Some(self.count)
+        } else {
+            None
+        }
+    }
+}
+```
+
+---
+
+## 17. 스마트 포인터
+
+### 17.1 Box<T>
+
+```rust
+// 힙 할당
+let b = Box::new(5);
+println!("{}", b);
+
+// 재귀 타입
+enum List {
+    Cons(i32, Box<List>),
+    Nil,
+}
+
+use List::{Cons, Nil};
+let list = Cons(1, Box::new(Cons(2, Box::new(Cons(3, Box::new(Nil))))));
+```
+
+### 17.2 Rc<T> (Reference Counted)
+
+```rust
+use std::rc::Rc;
+
+let a = Rc::new(5);
+let b = Rc::clone(&a);
+let c = Rc::clone(&a);
+
+println!("count: {}", Rc::strong_count(&a));  // 3
+```
+
+### 17.3 RefCell<T>
+
+```rust
+use std::cell::RefCell;
+
+let x = RefCell::new(5);
+*x.borrow_mut() += 1;
+println!("{}", x.borrow());  // 6
+
+// 내부 가변성 패턴
+pub trait Messenger {
+    fn send(&self, msg: &str);
+}
+
+struct MockMessenger {
+    sent_messages: RefCell<Vec<String>>,
+}
+
+impl Messenger for MockMessenger {
+    fn send(&self, msg: &str) {
+        self.sent_messages.borrow_mut().push(String::from(msg));
+    }
+}
+```
+
+---
+
+## 18. 동시성 (Concurrency)
+
+```rust
+use std::thread;
+use std::time::Duration;
+
+// 스레드 생성
+let handle = thread::spawn(|| {
+    for i in 1..10 {
+        println!("spawned thread: {}", i);
+        thread::sleep(Duration::from_millis(1));
+    }
+});
+
+handle.join().unwrap();
+
+// 이동 캡처
+let v = vec![1, 2, 3];
+let handle = thread::spawn(move || {
+    println!("{:?}", v);
+});
+
+// 채널
+use std::sync::mpsc;
+
+let (tx, rx) = mpsc::channel();
+
+thread::spawn(move || {
+    tx.send(String::from("hi")).unwrap();
+});
+
+let received = rx.recv().unwrap();
+println!("{}", received);
+
+// Mutex
+use std::sync::Mutex;
+
+let m = Mutex::new(5);
+{
+    let mut num = m.lock().unwrap();
+    *num = 6;
+}
+println!("{:?}", m);
+
+// Arc (Atomic Reference Counting)
+use std::sync::Arc;
+
+let counter = Arc::new(Mutex::new(0));
+let mut handles = vec![];
+
+for _ in 0..10 {
+    let counter = Arc::clone(&counter);
+    let handle = thread::spawn(move || {
+        let mut num = counter.lock().unwrap();
+        *num += 1;
+    });
+    handles.push(handle);
+}
+
+for handle in handles {
+    handle.join().unwrap();
+}
+
+println!("Result: {}", *counter.lock().unwrap());
+```
+
+---
+
+## 19. 비동기 프로그래밍
+
+```rust
+use tokio;
+
+// async 함수
+async fn say_hello() {
+    println!("Hello, async world!");
+}
+
+// await
+async fn fetch_data() -> Result<String, reqwest::Error> {
+    let response = reqwest::get("https://api.example.com/data").await?;
+    let body = response.text().await?;
+    Ok(body)
+}
+
+// tokio 런타임
+#[tokio::main]
+async fn main() {
+    say_hello().await;
+
+    let data = fetch_data().await;
+    match data {
+        Ok(d) => println!("{}", d),
+        Err(e) => eprintln!("Error: {}", e),
+    }
+}
+
+// 여러 태스크 동시 실행
+use tokio::join;
+
+async fn task1() {
+    // ...
+}
+
+async fn task2() {
+    // ...
+}
+
+#[tokio::main]
+async fn main() {
+    let (result1, result2) = join!(task1(), task2());
+}
+```
+
+---
+
+## 20. 고급 기능과 패턴
+
+### 20.1 매크로
+
+```rust
+// 선언적 매크로
+macro_rules! vec_macro {
+    ( $( $x:expr ),* ) => {
+        {
+            let mut temp_vec = Vec::new();
+            $(
+                temp_vec.push($x);
+            )*
+            temp_vec
+        }
+    };
+}
+
+// 절차적 매크로
+use proc_macro;
+
+#[proc_macro_derive(HelloMacro)]
+pub fn hello_macro_derive(input: TokenStream) -> TokenStream {
+    // ...
+}
+```
+
+### 20.2 unsafe Rust
+
+```rust
+// 원시 포인터
+let mut num = 5;
+let r1 = &num as *const i32;
+let r2 = &mut num as *mut i32;
+
+unsafe {
+    println!("r1: {}", *r1);
+    *r2 = 10;
+}
+
+// unsafe 함수
+unsafe fn dangerous() {}
+
+unsafe {
+    dangerous();
+}
+
+// 외부 함수 인터페이스 (FFI)
+extern "C" {
+    fn abs(input: i32) -> i32;
+}
+
+unsafe {
+    println!("{}", abs(-3));
+}
+```
+
+### 20.3 고급 트레이트
+
+```rust
+// 연관 타입
+pub trait Iterator {
+    type Item;
+    fn next(&mut self) -> Option<Self::Item>;
+}
+
+// 기본 타입 매개변수
+use std::ops::Add;
+
+#[derive(Debug, PartialEq)]
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+impl Add for Point {
+    type Output = Point;
+
+    fn add(self, other: Point) -> Point {
+        Point {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
+    }
+}
+
+// 슈퍼트레이트
+trait OutlinePrint: fmt::Display {
+    fn outline_print(&self) {
+        println!("* {} *", self);
+    }
+}
+```
+
+---
+
+## 결론
+
+Rust는 메모리 안전성과 동시성을 보장하는 시스템 프로그래밍 언어입니다:
+
+1. **소유권**: 가비지 컬렉터 없이 메모리 안전성
+2. **타입 시스템**: 컴파일 타임 에러 검출
+3. **제로 코스트 추상화**: 고수준 코드, 저수준 성능
+4. **동시성**: 데이터 경쟁 방지
+5. **패턴 매칭**: 강력한 제어 흐름
+
+**학습 순서**: 1-6 → 4-5 → 7-10 → 11-13 → 14 → 15-18
+
+Rust로 안전하고 빠른 시스템을 만드세요!

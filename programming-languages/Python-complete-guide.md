@@ -1260,19 +1260,828 @@ with open("data.csv", "r") as f:
 
 ---
 
-**(계속됩니다...)**
+## 10. 예외 처리
 
-이 Python 가이드는 계속해서 다음 주제들을 다룹니다:
-- 10. 예외 처리
-- 11. 객체지향 프로그래밍
-- 12. 함수형 프로그래밍
-- 13. 반복자와 제너레이터
-- 14. 데코레이터
-- 15. 컨텍스트 매니저
-- 16. 정규표현식
-- 17. 표준 라이브러리
-- 18. 동시성과 병렬성
-- 19. 타입 힌팅
-- 20. 고급 기능과 패턴
+```python
+# 기본 예외 처리
+try:
+    x = 10 / 0
+except ZeroDivisionError:
+    print("Cannot divide by zero")
 
-각 섹션은 Python의 강력한 기능들을 실전 예제와 함께 심도 있게 다룹니다.
+# 여러 예외
+try:
+    value = int(input("Enter a number: "))
+    result = 10 / value
+except ValueError:
+    print("Invalid number")
+except ZeroDivisionError:
+    print("Cannot divide by zero")
+
+# 예외 객체 접근
+try:
+    f = open("nonexistent.txt")
+except FileNotFoundError as e:
+    print(f"Error: {e}")
+
+# else와 finally
+try:
+    f = open("file.txt", "r")
+except FileNotFoundError:
+    print("File not found")
+else:
+    print("File opened successfully")
+    content = f.read()
+    f.close()
+finally:
+    print("Cleanup code")
+
+# 예외 발생
+def validate_age(age):
+    if age < 0:
+        raise ValueError("Age cannot be negative")
+    return age
+
+# 커스텀 예외
+class CustomError(Exception):
+    def __init__(self, message, code):
+        self.message = message
+        self.code = code
+        super().__init__(self.message)
+
+raise CustomError("Something went wrong", 500)
+
+# 예외 체이닝
+try:
+    # ...
+except Exception as e:
+    raise RuntimeError("Failed to process") from e
+```
+
+---
+
+## 11. 객체지향 프로그래밍
+
+### 11.1 클래스 기본
+
+```python
+class Person:
+    # 클래스 변수
+    species = "Homo sapiens"
+
+    def __init__(self, name, age):
+        # 인스턴스 변수
+        self.name = name
+        self.age = age
+
+    # 인스턴스 메서드
+    def greet(self):
+        print(f"Hello, I'm {self.name}")
+
+    # 클래스 메서드
+    @classmethod
+    def from_birth_year(cls, name, birth_year):
+        age = 2024 - birth_year
+        return cls(name, age)
+
+    # 정적 메서드
+    @staticmethod
+    def is_adult(age):
+        return age >= 18
+
+# 사용
+p = Person("Alice", 25)
+p.greet()
+
+p2 = Person.from_birth_year("Bob", 1990)
+print(Person.is_adult(20))
+```
+
+### 11.2 상속
+
+```python
+class Animal:
+    def __init__(self, name):
+        self.name = name
+
+    def speak(self):
+        pass
+
+class Dog(Animal):
+    def speak(self):
+        return f"{self.name} says Woof!"
+
+class Cat(Animal):
+    def speak(self):
+        return f"{self.name} says Meow!"
+
+# 다중 상속
+class Flyable:
+    def fly(self):
+        return "Flying..."
+
+class Bird(Animal, Flyable):
+    def speak(self):
+        return f"{self.name} says Tweet!"
+
+# super()
+class Employee(Person):
+    def __init__(self, name, age, employee_id):
+        super().__init__(name, age)
+        self.employee_id = employee_id
+```
+
+### 11.3 특수 메서드 (매직 메서드)
+
+```python
+class Vector:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+    def __repr__(self):
+        return f"Vector({self.x}, {self.y})"
+
+    def __str__(self):
+        return f"({self.x}, {self.y})"
+
+    def __add__(self, other):
+        return Vector(self.x + other.x, self.y + other.y)
+
+    def __mul__(self, scalar):
+        return Vector(self.x * scalar, self.y * scalar)
+
+    def __len__(self):
+        return 2
+
+    def __getitem__(self, index):
+        if index == 0:
+            return self.x
+        elif index == 1:
+            return self.y
+        raise IndexError("Index out of range")
+
+    def __eq__(self, other):
+        return self.x == other.x and self.y == other.y
+
+v1 = Vector(1, 2)
+v2 = Vector(3, 4)
+print(v1 + v2)  # Vector(4, 6)
+print(v1 * 3)   # Vector(3, 6)
+```
+
+### 11.4 프로퍼티
+
+```python
+class Circle:
+    def __init__(self, radius):
+        self._radius = radius
+
+    @property
+    def radius(self):
+        return self._radius
+
+    @radius.setter
+    def radius(self, value):
+        if value < 0:
+            raise ValueError("Radius cannot be negative")
+        self._radius = value
+
+    @property
+    def area(self):
+        return 3.14159 * self._radius ** 2
+
+    @property
+    def diameter(self):
+        return self._radius * 2
+
+    @diameter.setter
+    def diameter(self, value):
+        self._radius = value / 2
+
+c = Circle(5)
+print(c.area)      # 78.53975
+c.diameter = 20
+print(c.radius)    # 10.0
+```
+
+---
+
+## 12. 함수형 프로그래밍
+
+```python
+# map
+numbers = [1, 2, 3, 4, 5]
+squared = list(map(lambda x: x**2, numbers))
+
+# filter
+evens = list(filter(lambda x: x % 2 == 0, numbers))
+
+# reduce
+from functools import reduce
+sum_all = reduce(lambda x, y: x + y, numbers)
+
+# 리스트 컴프리헨션 (더 pythonic)
+squared = [x**2 for x in numbers]
+evens = [x for x in numbers if x % 2 == 0]
+
+# 딕셔너리 컴프리헨션
+squared_dict = {x: x**2 for x in numbers}
+
+# 집합 컴프리헨션
+unique_squares = {x**2 for x in [1, 2, 2, 3, 3, 4]}
+
+# 고차 함수
+def apply_twice(func, x):
+    return func(func(x))
+
+result = apply_twice(lambda x: x * 2, 5)  # 20
+
+# partial
+from functools import partial
+
+def power(base, exponent):
+    return base ** exponent
+
+square = partial(power, exponent=2)
+cube = partial(power, exponent=3)
+
+print(square(5))  # 25
+print(cube(3))    # 27
+```
+
+---
+
+## 13. 반복자와 제너레이터
+
+### 13.1 반복자
+
+```python
+class Counter:
+    def __init__(self, max):
+        self.max = max
+        self.count = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.count < self.max:
+            self.count += 1
+            return self.count
+        raise StopIteration
+
+for num in Counter(5):
+    print(num)  # 1, 2, 3, 4, 5
+```
+
+### 13.2 제너레이터
+
+```python
+# 제너레이터 함수
+def countdown(n):
+    while n > 0:
+        yield n
+        n -= 1
+
+for i in countdown(5):
+    print(i)
+
+# 무한 제너레이터
+def infinite_sequence():
+    num = 0
+    while True:
+        yield num
+        num += 1
+
+# 제너레이터 표현식
+squares = (x**2 for x in range(10))
+
+# 피보나치 제너레이터
+def fibonacci():
+    a, b = 0, 1
+    while True:
+        yield a
+        a, b = b, a + b
+
+# send() 메서드
+def echo():
+    while True:
+        value = yield
+        print(f"Received: {value}")
+
+gen = echo()
+next(gen)  # 시작
+gen.send(10)
+gen.send(20)
+```
+
+---
+
+## 14. 데코레이터
+
+```python
+# 기본 데코레이터
+def my_decorator(func):
+    def wrapper(*args, **kwargs):
+        print("Before function call")
+        result = func(*args, **kwargs)
+        print("After function call")
+        return result
+    return wrapper
+
+@my_decorator
+def greet(name):
+    print(f"Hello, {name}!")
+
+greet("Alice")
+
+# 매개변수가 있는 데코레이터
+def repeat(times):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            for _ in range(times):
+                result = func(*args, **kwargs)
+            return result
+        return wrapper
+    return decorator
+
+@repeat(3)
+def say_hello():
+    print("Hello!")
+
+# 클래스 데코레이터
+class CountCalls:
+    def __init__(self, func):
+        self.func = func
+        self.count = 0
+
+    def __call__(self, *args, **kwargs):
+        self.count += 1
+        print(f"Call {self.count}")
+        return self.func(*args, **kwargs)
+
+@CountCalls
+def greet():
+    print("Hello!")
+
+# 내장 데코레이터
+class MyClass:
+    @staticmethod
+    def static_method():
+        print("Static method")
+
+    @classmethod
+    def class_method(cls):
+        print("Class method")
+
+    @property
+    def my_property(self):
+        return "Property value"
+
+# functools.wraps
+from functools import wraps
+
+def my_decorator(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+    return wrapper
+```
+
+---
+
+## 15. 컨텍스트 매니저
+
+```python
+# with 문
+with open("file.txt", "r") as f:
+    content = f.read()
+# 파일 자동 닫힘
+
+# 커스텀 컨텍스트 매니저
+class MyContext:
+    def __enter__(self):
+        print("Entering context")
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        print("Exiting context")
+        if exc_type is not None:
+            print(f"Exception: {exc_val}")
+        return False  # 예외 전파
+
+with MyContext() as ctx:
+    print("Inside context")
+
+# contextlib
+from contextlib import contextmanager
+
+@contextmanager
+def my_context():
+    print("Setup")
+    try:
+        yield
+    finally:
+        print("Cleanup")
+
+with my_context():
+    print("Inside")
+
+# 여러 컨텍스트 매니저
+with open("input.txt") as infile, open("output.txt", "w") as outfile:
+    outfile.write(infile.read())
+```
+
+---
+
+## 16. 정규표현식
+
+```python
+import re
+
+# 매칭
+pattern = r"\d+"  # 숫자
+text = "I have 2 apples and 3 oranges"
+
+# search
+match = re.search(pattern, text)
+if match:
+    print(match.group())  # 2
+
+# findall
+numbers = re.findall(pattern, text)
+print(numbers)  # ['2', '3']
+
+# match (시작부터)
+if re.match(r"I", text):
+    print("Starts with I")
+
+# 치환
+new_text = re.sub(r"\d+", "X", text)
+print(new_text)  # "I have X apples and X oranges"
+
+# 그룹
+pattern = r"(\w+)@(\w+)\.(\w+)"
+email = "user@example.com"
+match = re.search(pattern, email)
+if match:
+    print(match.group(1))  # user
+    print(match.group(2))  # example
+    print(match.group(3))  # com
+
+# 플래그
+re.search(r"hello", "HELLO", re.IGNORECASE)
+
+# 컴파일
+pattern = re.compile(r"\d+")
+matches = pattern.findall(text)
+```
+
+---
+
+## 17. 표준 라이브러리
+
+```python
+# datetime
+from datetime import datetime, timedelta
+
+now = datetime.now()
+print(now.strftime("%Y-%m-%d %H:%M:%S"))
+
+tomorrow = now + timedelta(days=1)
+week_ago = now - timedelta(weeks=1)
+
+# collections
+from collections import Counter, defaultdict, deque, namedtuple
+
+counter = Counter("hello world")
+print(counter.most_common(3))
+
+dd = defaultdict(int)
+dd["count"] += 1
+
+dq = deque([1, 2, 3])
+dq.appendleft(0)
+dq.append(4)
+
+Point = namedtuple("Point", ["x", "y"])
+p = Point(10, 20)
+
+# itertools
+from itertools import chain, cycle, repeat, combinations
+
+# 무한 반복
+for i, val in zip(range(5), cycle([1, 2, 3])):
+    print(val)
+
+# 조합
+for combo in combinations([1, 2, 3, 4], 2):
+    print(combo)
+
+# random
+import random
+
+random.randint(1, 10)
+random.choice([1, 2, 3, 4, 5])
+random.shuffle([1, 2, 3, 4, 5])
+
+# os
+import os
+
+os.getcwd()
+os.listdir(".")
+os.mkdir("new_folder")
+os.environ["PATH"]
+
+# sys
+import sys
+
+sys.argv  # 명령행 인자
+sys.exit(0)
+sys.version
+```
+
+---
+
+## 18. 동시성과 병렬성
+
+### 18.1 스레딩
+
+```python
+import threading
+import time
+
+def worker(name):
+    print(f"Worker {name} starting")
+    time.sleep(2)
+    print(f"Worker {name} done")
+
+threads = []
+for i in range(5):
+    t = threading.Thread(target=worker, args=(i,))
+    t.start()
+    threads.append(t)
+
+for t in threads:
+    t.join()
+
+# Lock
+lock = threading.Lock()
+shared_data = 0
+
+def increment():
+    global shared_data
+    with lock:
+        shared_data += 1
+```
+
+### 18.2 멀티프로세싱
+
+```python
+from multiprocessing import Process, Pool, Queue
+
+def worker(n):
+    return n * n
+
+# Process
+p = Process(target=worker, args=(5,))
+p.start()
+p.join()
+
+# Pool
+with Pool(4) as pool:
+    results = pool.map(worker, [1, 2, 3, 4, 5])
+    print(results)
+
+# Queue
+def producer(q):
+    for i in range(5):
+        q.put(i)
+
+def consumer(q):
+    while True:
+        item = q.get()
+        if item is None:
+            break
+        print(item)
+
+q = Queue()
+```
+
+### 18.3 asyncio
+
+```python
+import asyncio
+
+async def say_hello():
+    print("Hello")
+    await asyncio.sleep(1)
+    print("World")
+
+# 실행
+asyncio.run(say_hello())
+
+# 여러 작업 동시 실행
+async def task(name, delay):
+    await asyncio.sleep(delay)
+    print(f"Task {name} done")
+
+async def main():
+    await asyncio.gather(
+        task("A", 1),
+        task("B", 2),
+        task("C", 1.5)
+    )
+
+asyncio.run(main())
+```
+
+---
+
+## 19. 타입 힌팅
+
+```python
+from typing import List, Dict, Tuple, Optional, Union, Callable
+
+# 기본 타입 힌팅
+def greet(name: str) -> str:
+    return f"Hello, {name}"
+
+# 컬렉션
+def process_numbers(numbers: List[int]) -> int:
+    return sum(numbers)
+
+# 딕셔너리
+def get_user_info() -> Dict[str, Union[str, int]]:
+    return {"name": "Alice", "age": 25}
+
+# Optional
+def find_user(user_id: int) -> Optional[str]:
+    # None을 반환할 수 있음
+    return None
+
+# Callable
+def apply(func: Callable[[int, int], int], a: int, b: int) -> int:
+    return func(a, b)
+
+# 제네릭
+from typing import TypeVar, Generic
+
+T = TypeVar('T')
+
+class Stack(Generic[T]):
+    def __init__(self) -> None:
+        self.items: List[T] = []
+
+    def push(self, item: T) -> None:
+        self.items.append(item)
+
+    def pop(self) -> T:
+        return self.items.pop()
+
+# Protocol (구조적 서브타이핑)
+from typing import Protocol
+
+class Drawable(Protocol):
+    def draw(self) -> None: ...
+
+# mypy로 타입 체크
+# $ mypy program.py
+```
+
+---
+
+## 20. 고급 기능과 패턴
+
+### 20.1 메타클래스
+
+```python
+class Meta(type):
+    def __new__(cls, name, bases, dct):
+        print(f"Creating class {name}")
+        return super().__new__(cls, name, bases, dct)
+
+class MyClass(metaclass=Meta):
+    pass
+
+# Singleton 패턴
+class Singleton(type):
+    _instances = {}
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+class MyClass(metaclass=Singleton):
+    pass
+```
+
+### 20.2 디스크립터
+
+```python
+class Descriptor:
+    def __init__(self, name):
+        self.name = name
+
+    def __get__(self, obj, objtype=None):
+        return obj.__dict__.get(self.name, None)
+
+    def __set__(self, obj, value):
+        if value < 0:
+            raise ValueError("Cannot be negative")
+        obj.__dict__[self.name] = value
+
+class Person:
+    age = Descriptor("age")
+
+    def __init__(self, age):
+        self.age = age
+
+p = Person(25)
+# p.age = -5  # ValueError
+```
+
+### 20.3 슬롯
+
+```python
+class Point:
+    __slots__ = ['x', 'y']
+
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+# 메모리 절약, 속성 추가 불가
+p = Point(1, 2)
+# p.z = 3  # AttributeError
+```
+
+### 20.4 데이터클래스 (Python 3.7+)
+
+```python
+from dataclasses import dataclass, field
+
+@dataclass
+class Person:
+    name: str
+    age: int
+    email: str = "unknown@example.com"
+    friends: List[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        if self.age < 0:
+            raise ValueError("Age cannot be negative")
+
+p = Person("Alice", 25)
+print(p)  # Person(name='Alice', age=25, email='unknown@example.com', friends=[])
+```
+
+### 20.5 주요 디자인 패턴
+
+```python
+# Factory Pattern
+class ShapeFactory:
+    @staticmethod
+    def create_shape(shape_type):
+        if shape_type == "circle":
+            return Circle()
+        elif shape_type == "square":
+            return Square()
+
+# Observer Pattern
+class Subject:
+    def __init__(self):
+        self._observers = []
+
+    def attach(self, observer):
+        self._observers.append(observer)
+
+    def notify(self, data):
+        for observer in self._observers:
+            observer.update(data)
+
+# Strategy Pattern
+class Context:
+    def __init__(self, strategy):
+        self._strategy = strategy
+
+    def execute_strategy(self, data):
+        return self._strategy.execute(data)
+```
+
+---
+
+## 결론
+
+Python은 읽기 쉽고 강력한 다목적 언어입니다:
+
+1. **간결한 문법**: 의사코드와 유사한 가독성
+2. **풍부한 라이브러리**: 배터리 포함 철학
+3. **다중 패러다임**: 객체지향, 함수형, 절차적
+4. **동적 타이핑**: 빠른 개발, 타입 힌팅으로 보완
+5. **커뮤니티**: 방대한 생태계와 지원
+
+**학습 순서**: 1-7 → 5-6 → 9-10 → 11 → 12-15 → 18-19
+
+Python으로 아이디어를 빠르게 구현하세요!

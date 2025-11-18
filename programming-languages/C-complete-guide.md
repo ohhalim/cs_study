@@ -2537,15 +2537,1151 @@ void sieve_of_eratosthenes(int n) {
 
 ---
 
-**(계속됩니다...)**
+## 14. 메모리 관리
 
-이 가이드는 계속해서 다음 주제들을 다룹니다:
-- 14. 메모리 관리
-- 15. 컴파일과 링킹
-- 16. 표준 라이브러리
-- 17. 고급 기법
-- 18. 최적화와 성능
-- 19. 디버깅과 도구
-- 20. 실전 프로젝트 패턴
+### 14.1 메모리 레이아웃
 
-각 섹션은 실전 예제와 함께 심도 있게 다뤄집니다.
+```c
+#include <stdio.h>
+#include <stdlib.h>
+
+int global_var = 10;           // 데이터 세그먼트
+static int static_var = 20;    // 데이터 세그먼트
+const int const_var = 30;      // 읽기 전용 데이터
+
+void function() {
+    int local_var = 40;        // 스택
+    static int static_local = 50;  // 데이터 세그먼트
+    int *heap_var = malloc(sizeof(int));  // 힙
+    *heap_var = 60;
+
+    printf("Global: %p\n", (void*)&global_var);
+    printf("Static: %p\n", (void*)&static_var);
+    printf("Const: %p\n", (void*)&const_var);
+    printf("Local: %p\n", (void*)&local_var);
+    printf("Static Local: %p\n", (void*)&static_local);
+    printf("Heap: %p\n", (void*)heap_var);
+
+    free(heap_var);
+}
+
+/*
+메모리 레이아웃 (낮은 주소 → 높은 주소):
+1. 텍스트 세그먼트 (코드)
+2. 읽기 전용 데이터
+3. 초기화된 데이터 (.data)
+4. 초기화되지 않은 데이터 (.bss)
+5. 힙 (↓ 아래로 성장)
+6. 스택 (↑ 위로 성장)
+*/
+```
+
+### 14.2 스택 vs 힙
+
+```c
+// 스택 할당
+void stack_allocation() {
+    int arr[1000];  // 스택에 4000바이트
+    // 빠르지만 크기 제한, 함수 종료 시 자동 해제
+}
+
+// 힙 할당
+void heap_allocation() {
+    int *arr = malloc(1000 * sizeof(int));
+    // 느리지만 크기 유연, 수동 해제 필요
+    free(arr);
+}
+
+// VLA (가변 길이 배열) - 스택
+void vla_example(int n) {
+    int arr[n];  // C99, 스택 오버플로우 위험
+}
+```
+
+### 14.3 메모리 누수 탐지
+
+```c
+// 메모리 누수 예제
+void memory_leak() {
+    int *ptr = malloc(100 * sizeof(int));
+    // free 없음!
+}  // 누수!
+
+// 이중 해제
+void double_free() {
+    int *ptr = malloc(sizeof(int));
+    free(ptr);
+    // free(ptr);  // 위험! 미정의 동작
+}
+
+// 해제 후 사용 (Use-After-Free)
+void use_after_free() {
+    int *ptr = malloc(sizeof(int));
+    *ptr = 10;
+    free(ptr);
+    // printf("%d\n", *ptr);  // 위험! 댕글링 포인터
+}
+
+// 올바른 패턴
+void correct_pattern() {
+    int *ptr = malloc(sizeof(int));
+    if (ptr == NULL) {
+        return;
+    }
+
+    *ptr = 10;
+    // 사용...
+
+    free(ptr);
+    ptr = NULL;  // 댕글링 포인터 방지
+}
+```
+
+### 14.4 메모리 정렬
+
+```c
+#include <stddef.h>
+#include <stdalign.h>  // C11
+
+// 구조체 정렬
+struct Aligned {
+    char c;      // 1 byte
+    // 3 bytes padding
+    int i;       // 4 bytes
+    char d;      // 1 byte
+    // 3 bytes padding
+};  // 총 12 bytes
+
+// 최적화된 구조체
+struct Optimized {
+    int i;       // 4 bytes
+    char c;      // 1 byte
+    char d;      // 1 byte
+    // 2 bytes padding
+};  // 총 8 bytes
+
+// 정렬 지정
+struct alignas(16) AlignedTo16 {
+    int x;
+};
+
+// 정렬 확인
+printf("Alignment of int: %zu\n", alignof(int));
+printf("Size: %zu, Alignment: %zu\n",
+       sizeof(struct Aligned), alignof(struct Aligned));
+```
+
+### 14.5 커스텀 메모리 할당자
+
+```c
+// 간단한 메모리 풀
+#define POOL_SIZE 1024
+#define BLOCK_SIZE 32
+
+typedef struct {
+    unsigned char pool[POOL_SIZE];
+    int used[POOL_SIZE / BLOCK_SIZE];
+} MemoryPool;
+
+MemoryPool* create_pool() {
+    MemoryPool *pool = malloc(sizeof(MemoryPool));
+    memset(pool->used, 0, sizeof(pool->used));
+    return pool;
+}
+
+void* pool_alloc(MemoryPool *pool) {
+    for (int i = 0; i < POOL_SIZE / BLOCK_SIZE; i++) {
+        if (!pool->used[i]) {
+            pool->used[i] = 1;
+            return &pool->pool[i * BLOCK_SIZE];
+        }
+    }
+    return NULL;
+}
+
+void pool_free(MemoryPool *pool, void *ptr) {
+    int index = ((unsigned char*)ptr - pool->pool) / BLOCK_SIZE;
+    if (index >= 0 && index < POOL_SIZE / BLOCK_SIZE) {
+        pool->used[index] = 0;
+    }
+}
+
+void destroy_pool(MemoryPool *pool) {
+    free(pool);
+}
+```
+
+---
+
+## 15. 컴파일과 링킹
+
+### 15.1 컴파일 단계
+
+```bash
+# 1. 전처리 (Preprocessing)
+gcc -E source.c -o source.i
+# - #include 확장
+# - 매크로 치환
+# - 조건부 컴파일
+
+# 2. 컴파일 (Compilation)
+gcc -S source.i -o source.s
+# - C 코드 → 어셈블리
+
+# 3. 어셈블 (Assembly)
+gcc -c source.s -o source.o
+# - 어셈블리 → 기계어 (오브젝트 파일)
+
+# 4. 링킹 (Linking)
+gcc source.o -o program
+# - 오브젝트 파일 결합
+# - 라이브러리 링크
+# - 실행 파일 생성
+
+# 한번에
+gcc -Wall -Wextra -O2 source.c -o program
+```
+
+### 15.2 헤더 파일과 소스 파일 분리
+
+```c
+// math_utils.h
+#ifndef MATH_UTILS_H
+#define MATH_UTILS_H
+
+int add(int a, int b);
+int multiply(int a, int b);
+
+#endif
+
+// math_utils.c
+#include "math_utils.h"
+
+int add(int a, int b) {
+    return a + b;
+}
+
+int multiply(int a, int b) {
+    return a * b;
+}
+
+// main.c
+#include <stdio.h>
+#include "math_utils.h"
+
+int main() {
+    printf("%d\n", add(3, 4));
+    printf("%d\n", multiply(3, 4));
+    return 0;
+}
+
+// 컴파일
+// gcc -c math_utils.c -o math_utils.o
+// gcc -c main.c -o main.o
+// gcc math_utils.o main.o -o program
+```
+
+### 15.3 정적 라이브러리 vs 동적 라이브러리
+
+```bash
+# 정적 라이브러리 (.a)
+gcc -c math_utils.c -o math_utils.o
+ar rcs libmath.a math_utils.o
+gcc main.c -L. -lmath -o program
+
+# 동적 라이브러리 (.so / .dll)
+gcc -fPIC -c math_utils.c -o math_utils.o
+gcc -shared -o libmath.so math_utils.o
+gcc main.c -L. -lmath -o program
+export LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH
+./program
+
+# 정적 vs 동적
+# 정적: 실행 파일에 포함, 크기 큼, 의존성 없음
+# 동적: 런타임 링크, 크기 작음, 라이브러리 공유
+```
+
+### 15.4 Makefile
+
+```makefile
+# Makefile
+CC = gcc
+CFLAGS = -Wall -Wextra -std=c11 -O2
+LDFLAGS = -lm
+
+SRCS = main.c math_utils.c string_utils.c
+OBJS = $(SRCS:.c=.o)
+TARGET = program
+
+all: $(TARGET)
+
+$(TARGET): $(OBJS)
+	$(CC) $(OBJS) -o $(TARGET) $(LDFLAGS)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+clean:
+	rm -f $(OBJS) $(TARGET)
+
+.PHONY: all clean
+```
+
+---
+
+## 16. 표준 라이브러리
+
+### 16.1 stdio.h
+
+```c
+#include <stdio.h>
+
+// 입출력
+printf("Hello, %s!\n", "World");
+fprintf(stderr, "Error: %d\n", errno);
+sprintf(buffer, "Value: %d", 42);
+snprintf(buffer, sizeof(buffer), "Safe: %d", 42);
+
+scanf("%d", &num);
+fscanf(file, "%d %s", &num, str);
+sscanf("42 hello", "%d %s", &num, str);
+
+// 파일 입출력
+FILE *fp = fopen("file.txt", "r");
+fgets(line, sizeof(line), fp);
+fputs("Hello\n", fp);
+fread(buffer, 1, size, fp);
+fwrite(buffer, 1, size, fp);
+fclose(fp);
+
+// 스트림 위치
+fseek(fp, 0, SEEK_SET);
+ftell(fp);
+rewind(fp);
+```
+
+### 16.2 stdlib.h
+
+```c
+#include <stdlib.h>
+
+// 메모리
+void *malloc(size_t size);
+void *calloc(size_t count, size_t size);
+void *realloc(void *ptr, size_t size);
+void free(void *ptr);
+
+// 문자열 변환
+int atoi(const char *str);
+long atol(const char *str);
+double atof(const char *str);
+long strtol(const char *str, char **endptr, int base);
+
+// 난수
+srand(time(NULL));
+int random = rand() % 100;
+
+// 프로세스
+exit(EXIT_SUCCESS);
+abort();
+int system("ls -l");
+
+// 검색/정렬
+qsort(array, count, sizeof(int), compare);
+bsearch(&key, array, count, sizeof(int), compare);
+
+// 환경
+char *env = getenv("PATH");
+```
+
+### 16.3 string.h
+
+```c
+#include <string.h>
+
+// 복사
+strcpy(dest, src);
+strncpy(dest, src, n);
+memcpy(dest, src, n);
+memmove(dest, src, n);
+
+// 연결
+strcat(dest, src);
+strncat(dest, src, n);
+
+// 비교
+strcmp(s1, s2);
+strncmp(s1, s2, n);
+memcmp(p1, p2, n);
+
+// 검색
+strchr(str, 'c');
+strrchr(str, 'c');
+strstr(haystack, needle);
+strpbrk(str, accept);
+strspn(str, accept);
+strcspn(str, reject);
+
+// 토큰화
+strtok(str, delim);
+
+// 기타
+strlen(str);
+memset(ptr, value, n);
+```
+
+### 16.4 math.h
+
+```c
+#include <math.h>
+
+// 거듭제곱/루트
+pow(x, y);
+sqrt(x);
+cbrt(x);
+
+// 삼각함수
+sin(x); cos(x); tan(x);
+asin(x); acos(x); atan(x);
+atan2(y, x);
+
+// 지수/로그
+exp(x);
+log(x);   // 자연로그
+log10(x);
+log2(x);
+
+// 올림/내림
+ceil(x);
+floor(x);
+round(x);
+trunc(x);
+
+// 절댓값
+fabs(x);
+abs(n);
+
+// 기타
+fmod(x, y);
+hypot(x, y);  // sqrt(x^2 + y^2)
+```
+
+### 16.5 time.h
+
+```c
+#include <time.h>
+
+// 현재 시간
+time_t now = time(NULL);
+
+// 시간 구조체
+struct tm *local = localtime(&now);
+printf("%d-%02d-%02d %02d:%02d:%02d\n",
+       local->tm_year + 1900,
+       local->tm_mon + 1,
+       local->tm_mday,
+       local->tm_hour,
+       local->tm_min,
+       local->tm_sec);
+
+// 포맷팅
+char buffer[80];
+strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", local);
+
+// 시간 측정
+clock_t start = clock();
+// 작업...
+clock_t end = clock();
+double cpu_time = ((double)(end - start)) / CLOCKS_PER_SEC;
+
+// 고해상도 시간 (POSIX)
+struct timespec ts;
+clock_gettime(CLOCK_MONOTONIC, &ts);
+```
+
+---
+
+## 17. 고급 기법
+
+### 17.1 함수 포인터 배열과 상태 머신
+
+```c
+typedef void (*StateFunc)(void);
+
+void state_idle(void) {
+    printf("IDLE state\n");
+}
+
+void state_running(void) {
+    printf("RUNNING state\n");
+}
+
+void state_stopped(void) {
+    printf("STOPPED state\n");
+}
+
+StateFunc states[] = {
+    state_idle,
+    state_running,
+    state_stopped
+};
+
+enum State { IDLE, RUNNING, STOPPED };
+
+void run_state_machine() {
+    enum State current = IDLE;
+
+    for (int i = 0; i < 10; i++) {
+        states[current]();
+        // 상태 전이 로직...
+    }
+}
+```
+
+### 17.2 콜백 패턴
+
+```c
+typedef int (*CompareFunc)(const void*, const void*);
+typedef void (*Callback)(void*);
+
+// 제네릭 정렬
+void generic_sort(void *base, size_t nmemb, size_t size, CompareFunc cmp) {
+    // 정렬 구현...
+}
+
+// 이벤트 시스템
+typedef struct {
+    Callback callbacks[10];
+    int count;
+} EventSystem;
+
+void register_callback(EventSystem *es, Callback cb) {
+    es->callbacks[es->count++] = cb;
+}
+
+void trigger_event(EventSystem *es, void *data) {
+    for (int i = 0; i < es->count; i++) {
+        es->callbacks[i](data);
+    }
+}
+```
+
+### 17.3 더블 포인터 활용
+
+```c
+// 링크드 리스트 노드 삭제
+typedef struct Node {
+    int data;
+    struct Node *next;
+} Node;
+
+// 나쁜 방법: 특수 케이스 필요
+void delete_bad(Node **head, int value) {
+    if (*head == NULL) return;
+
+    if ((*head)->data == value) {
+        Node *temp = *head;
+        *head = (*head)->next;
+        free(temp);
+        return;
+    }
+
+    Node *curr = *head;
+    while (curr->next != NULL) {
+        if (curr->next->data == value) {
+            Node *temp = curr->next;
+            curr->next = curr->next->next;
+            free(temp);
+            return;
+        }
+        curr = curr->next;
+    }
+}
+
+// 좋은 방법: 더블 포인터
+void delete_good(Node **head, int value) {
+    Node **indirect = head;
+
+    while (*indirect != NULL) {
+        if ((*indirect)->data == value) {
+            Node *temp = *indirect;
+            *indirect = (*indirect)->next;
+            free(temp);
+            return;
+        }
+        indirect = &(*indirect)->next;
+    }
+}
+```
+
+### 17.4 X-Macro 패턴
+
+```c
+// 에러 코드 정의
+#define ERROR_CODES \
+    X(OK, 0, "Success") \
+    X(INVALID_ARG, 1, "Invalid argument") \
+    X(NOT_FOUND, 2, "Not found") \
+    X(OUT_OF_MEMORY, 3, "Out of memory")
+
+// enum 생성
+#define X(name, code, msg) ERROR_##name = code,
+enum ErrorCode {
+    ERROR_CODES
+};
+#undef X
+
+// 문자열 배열 생성
+#define X(name, code, msg) msg,
+const char *error_messages[] = {
+    ERROR_CODES
+};
+#undef X
+
+// 사용
+void print_error(enum ErrorCode err) {
+    printf("Error: %s\n", error_messages[err]);
+}
+```
+
+---
+
+## 18. 최적화와 성능
+
+### 18.1 컴파일러 최적화
+
+```bash
+# 최적화 레벨
+gcc -O0  # 최적화 없음 (디버깅용)
+gcc -O1  # 기본 최적화
+gcc -O2  # 더 많은 최적화 (권장)
+gcc -O3  # 공격적 최적화
+gcc -Os  # 크기 최적화
+gcc -Ofast  # 표준 준수 무시하고 최대 성능
+
+# 아키텍처 특화
+gcc -march=native  # 현재 CPU에 최적화
+gcc -mtune=native
+
+# 링크 타임 최적화 (LTO)
+gcc -flto -O3 source.c -o program
+```
+
+### 18.2 프로파일링
+
+```c
+// gprof 사용
+// gcc -pg program.c -o program
+// ./program
+// gprof program gmon.out > analysis.txt
+
+// 수동 시간 측정
+#include <time.h>
+
+clock_t start = clock();
+// 측정할 코드
+clock_t end = clock();
+double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
+
+// 고해상도 타이머
+struct timespec start_ts, end_ts;
+clock_gettime(CLOCK_MONOTONIC, &start_ts);
+// 측정할 코드
+clock_gettime(CLOCK_MONOTONIC, &end_ts);
+double elapsed = (end_ts.tv_sec - start_ts.tv_sec) +
+                 (end_ts.tv_nsec - start_ts.tv_nsec) / 1e9;
+```
+
+### 18.3 캐시 친화적 코드
+
+```c
+// 나쁜 예: 캐시 미스 많음 (열 우선)
+void bad_matrix_sum(int matrix[1000][1000]) {
+    for (int j = 0; j < 1000; j++) {
+        for (int i = 0; i < 1000; i++) {
+            sum += matrix[i][j];  // 비연속 접근
+        }
+    }
+}
+
+// 좋은 예: 캐시 효율적 (행 우선)
+void good_matrix_sum(int matrix[1000][1000]) {
+    for (int i = 0; i < 1000; i++) {
+        for (int j = 0; j < 1000; j++) {
+            sum += matrix[i][j];  // 연속 접근
+        }
+    }
+}
+
+// 구조체 정렬로 캐시 라인 최적화
+struct CacheFriendly {
+    int frequently_used_together[8];  // 32바이트 (캐시 라인 절반)
+    // 자주 함께 사용되는 필드를 가까이 배치
+} __attribute__((aligned(64)));  // 캐시 라인 크기에 정렬
+```
+
+### 18.4 루프 최적화
+
+```c
+// 루프 언롤링
+// 나쁜 예
+for (int i = 0; i < 1000; i++) {
+    sum += array[i];
+}
+
+// 좋은 예 (수동 언롤링)
+for (int i = 0; i < 1000; i += 4) {
+    sum += array[i];
+    sum += array[i+1];
+    sum += array[i+2];
+    sum += array[i+3];
+}
+
+// 루프 불변 코드 이동
+// 나쁜 예
+for (int i = 0; i < n; i++) {
+    result += array[i] * expensive_function(x);
+}
+
+// 좋은 예
+int factor = expensive_function(x);
+for (int i = 0; i < n; i++) {
+    result += array[i] * factor;
+}
+
+// restrict 키워드 활용
+void vector_add(int * restrict a, int * restrict b,
+                int * restrict c, int n) {
+    for (int i = 0; i < n; i++) {
+        c[i] = a[i] + b[i];  // 컴파일러가 최적화 가능
+    }
+}
+```
+
+### 18.5 인라인과 매크로
+
+```c
+// inline 함수
+static inline int max(int a, int b) {
+    return (a > b) ? a : b;
+}
+
+// 매크로 (타입 제네릭, 하지만 부작용 주의)
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
+// __builtin 함수 활용
+int leading_zeros = __builtin_clz(x);
+int popcount = __builtin_popcount(x);
+
+// 분기 예측 힌트
+#define likely(x)   __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
+
+if (unlikely(error_condition)) {
+    handle_error();
+}
+```
+
+---
+
+## 19. 디버깅과 도구
+
+### 19.1 GDB (GNU Debugger)
+
+```bash
+# 컴파일 (디버그 심볼 포함)
+gcc -g program.c -o program
+
+# GDB 시작
+gdb ./program
+
+# 주요 명령어
+(gdb) run                 # 프로그램 실행
+(gdb) break main          # main에 중단점
+(gdb) break file.c:10     # 파일:줄에 중단점
+(gdb) continue            # 계속 실행
+(gdb) next                # 다음 줄 (함수 진입 안함)
+(gdb) step                # 다음 줄 (함수 진입)
+(gdb) print variable      # 변수 출력
+(gdb) backtrace           # 스택 추적
+(gdb) frame 2             # 프레임 전환
+(gdb) watch variable      # 변수 감시
+(gdb) info breakpoints    # 중단점 목록
+(gdb) delete 1            # 중단점 1 삭제
+```
+
+### 19.2 Valgrind
+
+```bash
+# 메모리 누수 검사
+valgrind --leak-check=full ./program
+
+# 메모리 에러 검사
+valgrind --track-origins=yes ./program
+
+# 캐시 프로파일링
+valgrind --tool=cachegrind ./program
+cg_annotate cachegrind.out.<pid>
+
+# 힙 프로파일링
+valgrind --tool=massif ./program
+ms_print massif.out.<pid>
+```
+
+### 19.3 정적 분석 도구
+
+```bash
+# Clang Static Analyzer
+scan-build gcc program.c
+
+# Cppcheck
+cppcheck --enable=all program.c
+
+# Splint
+splint program.c
+
+# AddressSanitizer (ASan)
+gcc -fsanitize=address -g program.c -o program
+./program
+
+# UndefinedBehaviorSanitizer (UBSan)
+gcc -fsanitize=undefined -g program.c -o program
+./program
+```
+
+### 19.4 어서션과 디버그 매크로
+
+```c
+#include <assert.h>
+
+void process(int *ptr, int size) {
+    assert(ptr != NULL);
+    assert(size > 0);
+    // ...
+}
+
+// 커스텀 디버그 매크로
+#ifdef DEBUG
+    #define DEBUG_PRINT(fmt, ...) \
+        fprintf(stderr, "[%s:%d] " fmt "\n", \
+                __FILE__, __LINE__, ##__VA_ARGS__)
+#else
+    #define DEBUG_PRINT(fmt, ...) do {} while (0)
+#endif
+
+// 사용
+DEBUG_PRINT("Value: %d", x);
+
+// 컴파일 타임 어서션 (C11)
+_Static_assert(sizeof(int) == 4, "int must be 4 bytes");
+```
+
+---
+
+## 20. 실전 프로젝트 패턴
+
+### 20.1 에러 처리 패턴
+
+```c
+// 1. 에러 코드 반환
+typedef enum {
+    SUCCESS = 0,
+    ERROR_INVALID_ARGUMENT = -1,
+    ERROR_OUT_OF_MEMORY = -2,
+    ERROR_FILE_NOT_FOUND = -3
+} ErrorCode;
+
+ErrorCode process_data(const char *filename, int **result) {
+    if (filename == NULL || result == NULL) {
+        return ERROR_INVALID_ARGUMENT;
+    }
+
+    FILE *fp = fopen(filename, "r");
+    if (fp == NULL) {
+        return ERROR_FILE_NOT_FOUND;
+    }
+
+    *result = malloc(100 * sizeof(int));
+    if (*result == NULL) {
+        fclose(fp);
+        return ERROR_OUT_OF_MEMORY;
+    }
+
+    // 처리...
+    fclose(fp);
+    return SUCCESS;
+}
+
+// 2. errno 활용
+#include <errno.h>
+#include <string.h>
+
+void safe_file_operation() {
+    FILE *fp = fopen("file.txt", "r");
+    if (fp == NULL) {
+        fprintf(stderr, "Error: %s\n", strerror(errno));
+        return;
+    }
+    // ...
+}
+```
+
+### 20.2 리소스 관리 패턴 (RAII 모방)
+
+```c
+// 자동 정리 매크로
+#define CLEANUP_FUNC(func) __attribute__((cleanup(func)))
+
+void cleanup_file(FILE **fp) {
+    if (*fp != NULL) {
+        fclose(*fp);
+        *fp = NULL;
+    }
+}
+
+void cleanup_malloc(void *ptr) {
+    void **p = (void**)ptr;
+    if (*p != NULL) {
+        free(*p);
+        *p = NULL;
+    }
+}
+
+void example_function() {
+    CLEANUP_FUNC(cleanup_file) FILE *fp = fopen("file.txt", "r");
+    CLEANUP_FUNC(cleanup_malloc) char *buffer = malloc(1024);
+
+    if (fp == NULL || buffer == NULL) {
+        return;  // 자동으로 정리됨
+    }
+
+    // 작업...
+    // 함수 종료 시 자동으로 cleanup 함수 호출됨
+}
+```
+
+### 20.3 플러그인 시스템
+
+```c
+// plugin.h
+typedef struct {
+    const char *name;
+    int version;
+    int (*init)(void);
+    void (*process)(void *data);
+    void (*cleanup)(void);
+} Plugin;
+
+// main.c
+#include <dlfcn.h>  // 동적 로딩
+
+void load_plugin(const char *path) {
+    void *handle = dlopen(path, RTLD_LAZY);
+    if (!handle) {
+        fprintf(stderr, "Cannot load plugin: %s\n", dlerror());
+        return;
+    }
+
+    Plugin *(*get_plugin)(void) = dlsym(handle, "get_plugin");
+    if (!get_plugin) {
+        fprintf(stderr, "Cannot find get_plugin: %s\n", dlerror());
+        dlclose(handle);
+        return;
+    }
+
+    Plugin *plugin = get_plugin();
+    plugin->init();
+    plugin->process(data);
+    plugin->cleanup();
+
+    dlclose(handle);
+}
+
+// plugin_example.c
+static int plugin_init(void) {
+    printf("Plugin initialized\n");
+    return 0;
+}
+
+static void plugin_process(void *data) {
+    printf("Processing data\n");
+}
+
+static void plugin_cleanup(void) {
+    printf("Plugin cleanup\n");
+}
+
+static Plugin my_plugin = {
+    .name = "Example Plugin",
+    .version = 1,
+    .init = plugin_init,
+    .process = plugin_process,
+    .cleanup = plugin_cleanup
+};
+
+Plugin* get_plugin(void) {
+    return &my_plugin;
+}
+```
+
+### 20.4 설정 파일 파싱
+
+```c
+// INI 파일 파서
+typedef struct {
+    char section[64];
+    char key[64];
+    char value[256];
+} ConfigEntry;
+
+typedef struct {
+    ConfigEntry *entries;
+    int count;
+    int capacity;
+} Config;
+
+Config* parse_config(const char *filename) {
+    Config *config = malloc(sizeof(Config));
+    config->capacity = 10;
+    config->count = 0;
+    config->entries = malloc(config->capacity * sizeof(ConfigEntry));
+
+    FILE *fp = fopen(filename, "r");
+    if (!fp) return config;
+
+    char line[512];
+    char current_section[64] = "";
+
+    while (fgets(line, sizeof(line), fp)) {
+        // 주석 제거
+        char *comment = strchr(line, '#');
+        if (comment) *comment = '\0';
+
+        // 공백 제거
+        char *trimmed = line;
+        while (isspace(*trimmed)) trimmed++;
+
+        if (*trimmed == '\0') continue;
+
+        // 섹션 파싱
+        if (*trimmed == '[') {
+            sscanf(trimmed, "[%63[^]]]", current_section);
+            continue;
+        }
+
+        // 키=값 파싱
+        char key[64], value[256];
+        if (sscanf(trimmed, "%63[^=]=%255[^\n]", key, value) == 2) {
+            if (config->count >= config->capacity) {
+                config->capacity *= 2;
+                config->entries = realloc(config->entries,
+                    config->capacity * sizeof(ConfigEntry));
+            }
+
+            ConfigEntry *entry = &config->entries[config->count++];
+            strcpy(entry->section, current_section);
+            strcpy(entry->key, key);
+            strcpy(entry->value, value);
+        }
+    }
+
+    fclose(fp);
+    return config;
+}
+
+const char* get_config_value(Config *config,
+                              const char *section,
+                              const char *key) {
+    for (int i = 0; i < config->count; i++) {
+        if (strcmp(config->entries[i].section, section) == 0 &&
+            strcmp(config->entries[i].key, key) == 0) {
+            return config->entries[i].value;
+        }
+    }
+    return NULL;
+}
+```
+
+### 20.5 로깅 시스템
+
+```c
+typedef enum {
+    LOG_DEBUG,
+    LOG_INFO,
+    LOG_WARNING,
+    LOG_ERROR
+} LogLevel;
+
+typedef struct {
+    FILE *file;
+    LogLevel min_level;
+} Logger;
+
+Logger* create_logger(const char *filename, LogLevel level) {
+    Logger *logger = malloc(sizeof(Logger));
+    logger->file = fopen(filename, "a");
+    logger->min_level = level;
+    return logger;
+}
+
+void log_message(Logger *logger, LogLevel level,
+                 const char *file, int line,
+                 const char *fmt, ...) {
+    if (level < logger->min_level) return;
+
+    const char *level_str[] = {"DEBUG", "INFO", "WARNING", "ERROR"};
+
+    time_t now = time(NULL);
+    char timestamp[64];
+    strftime(timestamp, sizeof(timestamp),
+             "%Y-%m-%d %H:%M:%S", localtime(&now));
+
+    fprintf(logger->file, "[%s] [%s] %s:%d: ",
+            timestamp, level_str[level], file, line);
+
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(logger->file, fmt, args);
+    va_end(args);
+
+    fprintf(logger->file, "\n");
+    fflush(logger->file);
+}
+
+#define LOG_DEBUG(logger, ...) \
+    log_message(logger, LOG_DEBUG, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_INFO(logger, ...) \
+    log_message(logger, LOG_INFO, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_WARNING(logger, ...) \
+    log_message(logger, LOG_WARNING, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_ERROR(logger, ...) \
+    log_message(logger, LOG_ERROR, __FILE__, __LINE__, __VA_ARGS__)
+
+// 사용
+Logger *logger = create_logger("app.log", LOG_INFO);
+LOG_INFO(logger, "Application started");
+LOG_ERROR(logger, "Failed to open file: %s", filename);
+```
+
+---
+
+## 결론
+
+이 C 언어 가이드는 기초부터 고급 기법까지 모든 것을 다룹니다:
+
+1. **기초**: 변수, 타입, 연산자, 제어문
+2. **핵심**: 함수, 포인터, 배열, 구조체
+3. **메모리**: 동적 할당, 메모리 관리, 최적화
+4. **고급**: 비트 연산, 전처리기, 함수 포인터
+5. **실전**: 파일 I/O, 표준 라이브러리, 프로젝트 패턴
+6. **전문가**: 컴파일, 링킹, 디버깅, 성능 최적화
+
+C를 마스터하면:
+- 메모리와 하드웨어를 깊이 이해
+- 시스템 프로그래밍 능력 획득
+- 다른 언어의 기초 원리 파악
+- 성능 최적화 전문성 확보
+
+**추천 학습 순서**: 1→7→6→5→9→10→11→14→15→나머지
+
+계속 연습하고, 작은 프로젝트를 만들어보세요!

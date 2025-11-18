@@ -1837,19 +1837,932 @@ int main() {
 
 ---
 
-**(계속됩니다...)**
+## 10. 템플릿
 
-이 C++ 가이드는 계속해서 다음 주제들을 다룹니다:
-- 10. 템플릿
-- 11. STL (표준 템플릿 라이브러리)
-- 12. 예외 처리
-- 13. 네임스페이스
-- 14. 형변환 연산자
-- 15. 스마트 포인터
-- 16. 이동 의미론과 rvalue 참조
-- 17. 람다 표현식
-- 18. 모던 C++ (C++11/14/17/20/23)
-- 19. 동시성과 멀티스레딩
-- 20. 메타프로그래밍과 고급 기법
+### 10.1 함수 템플릿
 
-각 섹션은 실전 예제와 함께 심도 있게 다뤄집니다.
+```cpp
+// 기본 함수 템플릿
+template<typename T>
+T max(T a, T b) {
+    return (a > b) ? a : b;
+}
+
+// 사용
+int i = max(10, 20);           // T = int
+double d = max(3.14, 2.71);    // T = double
+std::string s = max(std::string("abc"), std::string("xyz"));
+
+// 명시적 타입 지정
+auto result = max<double>(10, 20.5);
+
+// 여러 타입 매개변수
+template<typename T, typename U>
+auto add(T a, U b) -> decltype(a + b) {
+    return a + b;
+}
+
+// C++14: 반환 타입 추론
+template<typename T, typename U>
+auto multiply(T a, U b) {
+    return a * b;
+}
+
+// 비타입 템플릿 매개변수
+template<typename T, int N>
+class Array {
+    T data[N];
+public:
+    int size() const { return N; }
+};
+
+Array<int, 10> arr;
+```
+
+### 10.2 클래스 템플릿
+
+```cpp
+template<typename T>
+class Stack {
+private:
+    std::vector<T> elements;
+
+public:
+    void push(const T& elem) {
+        elements.push_back(elem);
+    }
+
+    void pop() {
+        if (elements.empty()) {
+            throw std::out_of_range("Stack<>::pop(): empty stack");
+        }
+        elements.pop_back();
+    }
+
+    T top() const {
+        if (elements.empty()) {
+            throw std::out_of_range("Stack<>::top(): empty stack");
+        }
+        return elements.back();
+    }
+
+    bool empty() const {
+        return elements.empty();
+    }
+};
+
+// 사용
+Stack<int> intStack;
+intStack.push(7);
+std::cout << intStack.top() << std::endl;
+
+Stack<std::string> stringStack;
+stringStack.push("hello");
+```
+
+### 10.3 템플릿 특수화
+
+```cpp
+// 일반 템플릿
+template<typename T>
+class Printer {
+public:
+    void print(const T& value) {
+        std::cout << value << std::endl;
+    }
+};
+
+// 완전 특수화
+template<>
+class Printer<bool> {
+public:
+    void print(const bool& value) {
+        std::cout << (value ? "true" : "false") << std::endl;
+    }
+};
+
+// 부분 특수화 (포인터 타입)
+template<typename T>
+class Printer<T*> {
+public:
+    void print(T* const& ptr) {
+        if (ptr) {
+            std::cout << "Pointer to: " << *ptr << std::endl;
+        } else {
+            std::cout << "nullptr" << std::endl;
+        }
+    }
+};
+```
+
+### 10.4 가변 인자 템플릿 (C++11)
+
+```cpp
+// 재귀 종료
+void print() {
+    std::cout << std::endl;
+}
+
+// 가변 인자 템플릿
+template<typename T, typename... Args>
+void print(T first, Args... args) {
+    std::cout << first << " ";
+    print(args...);  // 재귀 호출
+}
+
+// 사용
+print(1, 2.5, "hello", 'c');
+
+// sizeof... 연산자
+template<typename... Args>
+void count(Args... args) {
+    std::cout << "Arguments: " << sizeof...(args) << std::endl;
+}
+
+// 폴드 표현식 (C++17)
+template<typename... Args>
+auto sum(Args... args) {
+    return (args + ...);  // 단항 오른쪽 폴드
+}
+
+std::cout << sum(1, 2, 3, 4, 5) << std::endl;  // 15
+```
+
+---
+
+## 11. STL (표준 템플릿 라이브러리)
+
+### 11.1 컨테이너
+
+```cpp
+#include <vector>
+#include <list>
+#include <deque>
+#include <set>
+#include <map>
+#include <unordered_map>
+
+// vector
+std::vector<int> vec = {1, 2, 3, 4, 5};
+vec.push_back(6);
+vec.pop_back();
+vec[0] = 10;
+vec.at(1) = 20;
+
+// list (양방향 연결 리스트)
+std::list<int> lst = {1, 2, 3};
+lst.push_front(0);
+lst.push_back(4);
+
+// deque
+std::deque<int> deq;
+deq.push_back(1);
+deq.push_front(0);
+
+// set (정렬된 집합)
+std::set<int> s = {3, 1, 4, 1, 5};  // {1, 3, 4, 5}
+s.insert(2);
+s.erase(3);
+
+// map (정렬된 키-값)
+std::map<std::string, int> m;
+m["apple"] = 1;
+m["banana"] = 2;
+m.insert({"cherry", 3});
+
+// unordered_map (해시 테이블)
+std::unordered_map<std::string, int> um;
+um["key1"] = 100;
+um["key2"] = 200;
+```
+
+### 11.2 반복자 (Iterators)
+
+```cpp
+std::vector<int> vec = {1, 2, 3, 4, 5};
+
+// 순회
+for (auto it = vec.begin(); it != vec.end(); ++it) {
+    std::cout << *it << " ";
+}
+
+// 역순회
+for (auto it = vec.rbegin(); it != vec.rend(); ++it) {
+    std::cout << *it << " ";
+}
+
+// const 반복자
+for (auto it = vec.cbegin(); it != vec.cend(); ++it) {
+    // *it = 10;  // 에러
+}
+
+// 범위 기반 for (C++11)
+for (const auto& elem : vec) {
+    std::cout << elem << " ";
+}
+
+// 반복자 연산
+auto it = vec.begin();
+std::advance(it, 2);  // 2칸 전진
+auto dist = std::distance(vec.begin(), vec.end());
+```
+
+### 11.3 알고리즘
+
+```cpp
+#include <algorithm>
+#include <numeric>
+
+std::vector<int> vec = {3, 1, 4, 1, 5, 9, 2, 6};
+
+// 정렬
+std::sort(vec.begin(), vec.end());
+std::sort(vec.begin(), vec.end(), std::greater<int>());
+
+// 검색
+auto it = std::find(vec.begin(), vec.end(), 5);
+if (it != vec.end()) {
+    std::cout << "Found: " << *it << std::endl;
+}
+
+// 이진 검색 (정렬된 범위)
+bool found = std::binary_search(vec.begin(), vec.end(), 5);
+
+// 개수 세기
+int count = std::count(vec.begin(), vec.end(), 1);
+
+// 최소/최대
+auto min_it = std::min_element(vec.begin(), vec.end());
+auto max_it = std::max_element(vec.begin(), vec.end());
+
+// 변환
+std::vector<int> squared(vec.size());
+std::transform(vec.begin(), vec.end(), squared.begin(),
+               [](int x) { return x * x; });
+
+// 필터링
+std::vector<int> evens;
+std::copy_if(vec.begin(), vec.end(), std::back_inserter(evens),
+             [](int x) { return x % 2 == 0; });
+
+// 축적
+int sum = std::accumulate(vec.begin(), vec.end(), 0);
+int product = std::accumulate(vec.begin(), vec.end(), 1,
+                               std::multiplies<int>());
+
+// 제거
+vec.erase(std::remove(vec.begin(), vec.end(), 1), vec.end());
+
+// 고유값만 유지
+std::sort(vec.begin(), vec.end());
+vec.erase(std::unique(vec.begin(), vec.end()), vec.end());
+```
+
+### 11.4 함수 객체와 람다
+
+```cpp
+// 함수 객체 (Functor)
+struct Multiply {
+    int factor;
+    Multiply(int f) : factor(f) {}
+    int operator()(int x) const {
+        return x * factor;
+    }
+};
+
+std::vector<int> vec = {1, 2, 3, 4, 5};
+std::transform(vec.begin(), vec.end(), vec.begin(), Multiply(2));
+
+// 람다
+std::transform(vec.begin(), vec.end(), vec.begin(),
+               [](int x) { return x * 2; });
+
+// 캡처
+int factor = 3;
+std::transform(vec.begin(), vec.end(), vec.begin(),
+               [factor](int x) { return x * factor; });
+
+// 가변 람다
+int count = 0;
+std::for_each(vec.begin(), vec.end(),
+              [&count](int x) { count += x; });
+```
+
+---
+
+## 12. 예외 처리
+
+### 12.1 예외 기본
+
+```cpp
+#include <stdexcept>
+
+void divide(int a, int b) {
+    if (b == 0) {
+        throw std::runtime_error("Division by zero");
+    }
+    std::cout << a / b << std::endl;
+}
+
+try {
+    divide(10, 0);
+} catch (const std::runtime_error& e) {
+    std::cerr << "Error: " << e.what() << std::endl;
+} catch (const std::exception& e) {
+    std::cerr << "Exception: " << e.what() << std::endl;
+} catch (...) {
+    std::cerr << "Unknown exception" << std::endl;
+}
+```
+
+### 12.2 표준 예외 계층
+
+```cpp
+// std::exception (기반 클래스)
+//   ├─ std::logic_error
+//   │   ├─ std::invalid_argument
+//   │   ├─ std::domain_error
+//   │   ├─ std::length_error
+//   │   └─ std::out_of_range
+//   └─ std::runtime_error
+//       ├─ std::range_error
+//       ├─ std::overflow_error
+//       └─ std::underflow_error
+
+try {
+    std::vector<int> vec(10);
+    vec.at(20);  // std::out_of_range
+} catch (const std::out_of_range& e) {
+    std::cerr << e.what() << std::endl;
+}
+```
+
+### 12.3 커스텀 예외
+
+```cpp
+class MyException : public std::exception {
+private:
+    std::string message;
+public:
+    MyException(const std::string& msg) : message(msg) {}
+
+    const char* what() const noexcept override {
+        return message.c_str();
+    }
+};
+
+throw MyException("Something went wrong");
+```
+
+### 12.4 RAII와 예외 안전성
+
+```cpp
+class Resource {
+public:
+    Resource() { std::cout << "Acquired\n"; }
+    ~Resource() { std::cout << "Released\n"; }
+};
+
+void process() {
+    Resource r;  // RAII
+    // 예외 발생해도 소멸자 자동 호출
+    throw std::runtime_error("Error");
+}
+
+// 예외 안전성 보장
+class SafeVector {
+    int* data;
+    size_t size;
+public:
+    void resize(size_t new_size) {
+        int* new_data = new int[new_size];
+        try {
+            // 복사...
+            delete[] data;
+            data = new_data;
+            size = new_size;
+        } catch (...) {
+            delete[] new_data;
+            throw;
+        }
+    }
+};
+```
+
+---
+
+## 13. 네임스페이스
+
+```cpp
+namespace MyNamespace {
+    int value = 10;
+    void func() {
+        std::cout << "MyNamespace::func()" << std::endl;
+    }
+
+    namespace Nested {
+        void func() {
+            std::cout << "Nested::func()" << std::endl;
+        }
+    }
+}
+
+// 사용
+MyNamespace::func();
+MyNamespace::Nested::func();
+
+// using 선언
+using MyNamespace::func;
+func();
+
+// using 지시자 (권장하지 않음)
+using namespace MyNamespace;
+
+// 별칭 (C++11)
+namespace MN = MyNamespace;
+MN::func();
+
+// 인라인 네임스페이스 (C++11)
+namespace MyLib {
+    inline namespace v2 {
+        void func() { std::cout << "v2\n"; }
+    }
+    namespace v1 {
+        void func() { std::cout << "v1\n"; }
+    }
+}
+
+MyLib::func();     // v2::func()
+MyLib::v1::func(); // v1::func()
+```
+
+---
+
+## 14. 형변환 연산자
+
+```cpp
+// static_cast (컴파일 타임 캐스팅)
+double d = 3.14;
+int i = static_cast<int>(d);
+
+// const_cast (const 제거)
+const int x = 10;
+int* ptr = const_cast<int*>(&x);
+*ptr = 20;  // 미정의 동작!
+
+// reinterpret_cast (비트 패턴 재해석)
+int num = 42;
+void* void_ptr = reinterpret_cast<void*>(num);
+
+// dynamic_cast (런타임 타입 검사)
+class Base {
+    virtual ~Base() {}
+};
+class Derived : public Base {};
+
+Base* base = new Derived();
+Derived* derived = dynamic_cast<Derived*>(base);
+if (derived) {
+    std::cout << "Cast successful" << std::endl;
+}
+```
+
+---
+
+## 15. 스마트 포인터
+
+### 15.1 unique_ptr
+
+```cpp
+#include <memory>
+
+// 독점 소유권
+std::unique_ptr<int> ptr1(new int(42));
+std::unique_ptr<int> ptr2 = std::make_unique<int>(42);  // C++14
+
+// 이동만 가능, 복사 불가
+std::unique_ptr<int> ptr3 = std::move(ptr2);
+// ptr2는 이제 nullptr
+
+// 배열
+std::unique_ptr<int[]> arr(new int[10]);
+arr[0] = 10;
+
+// 커스텀 deleter
+auto deleter = [](FILE* fp) {
+    if (fp) fclose(fp);
+};
+std::unique_ptr<FILE, decltype(deleter)> file(fopen("file.txt", "r"), deleter);
+```
+
+### 15.2 shared_ptr
+
+```cpp
+// 공유 소유권 (참조 카운팅)
+std::shared_ptr<int> ptr1 = std::make_shared<int>(42);
+std::shared_ptr<int> ptr2 = ptr1;  // 참조 카운트 증가
+
+std::cout << ptr1.use_count() << std::endl;  // 2
+
+ptr2.reset();  // 참조 카운트 감소
+std::cout << ptr1.use_count() << std::endl;  // 1
+
+// 순환 참조 문제
+class Node {
+public:
+    std::shared_ptr<Node> next;
+    ~Node() { std::cout << "Node destroyed\n"; }
+};
+
+std::shared_ptr<Node> n1 = std::make_shared<Node>();
+std::shared_ptr<Node> n2 = std::make_shared<Node>();
+n1->next = n2;
+n2->next = n1;  // 메모리 누수!
+```
+
+### 15.3 weak_ptr
+
+```cpp
+// 순환 참조 해결
+class Node {
+public:
+    std::weak_ptr<Node> next;  // weak_ptr 사용
+    ~Node() { std::cout << "Node destroyed\n"; }
+};
+
+std::shared_ptr<Node> n1 = std::make_shared<Node>();
+std::shared_ptr<Node> n2 = std::make_shared<Node>();
+n1->next = n2;
+n2->next = n1;  // 이제 메모리 누수 없음
+
+// weak_ptr 사용
+std::weak_ptr<int> weak = ptr1;
+if (auto shared = weak.lock()) {  // shared_ptr로 변환
+    std::cout << *shared << std::endl;
+} else {
+    std::cout << "Object destroyed" << std::endl;
+}
+```
+
+---
+
+## 16. 이동 의미론과 rvalue 참조
+
+### 16.1 이동 의미론
+
+```cpp
+class String {
+    char* data;
+    size_t size;
+public:
+    // 복사 생성자
+    String(const String& other) {
+        size = other.size;
+        data = new char[size];
+        std::copy(other.data, other.data + size, data);
+        std::cout << "Copy constructor\n";
+    }
+
+    // 이동 생성자
+    String(String&& other) noexcept {
+        data = other.data;
+        size = other.size;
+        other.data = nullptr;
+        other.size = 0;
+        std::cout << "Move constructor\n";
+    }
+
+    // 복사 대입
+    String& operator=(const String& other) {
+        if (this != &other) {
+            delete[] data;
+            size = other.size;
+            data = new char[size];
+            std::copy(other.data, other.data + size, data);
+        }
+        return *this;
+    }
+
+    // 이동 대입
+    String& operator=(String&& other) noexcept {
+        if (this != &other) {
+            delete[] data;
+            data = other.data;
+            size = other.size;
+            other.data = nullptr;
+            other.size = 0;
+        }
+        return *this;
+    }
+};
+
+String s1("hello");
+String s2 = std::move(s1);  // 이동 생성자 호출
+```
+
+### 16.2 완벽한 전달 (Perfect Forwarding)
+
+```cpp
+template<typename T>
+void wrapper(T&& arg) {
+    func(std::forward<T>(arg));
+}
+
+// lvalue는 lvalue로, rvalue는 rvalue로 전달됨
+```
+
+---
+
+## 17. 람다 표현식
+
+```cpp
+// 기본
+auto lambda = []() {
+    std::cout << "Hello" << std::endl;
+};
+lambda();
+
+// 매개변수와 반환값
+auto add = [](int a, int b) -> int {
+    return a + b;
+};
+
+// 캡처
+int x = 10;
+auto f1 = [x]() { std::cout << x << std::endl; };      // 값 캡처
+auto f2 = [&x]() { x++; };                             // 참조 캡처
+auto f3 = [=]() { std::cout << x << std::endl; };      // 모든 값 캡처
+auto f4 = [&]() { x++; };                              // 모든 참조 캡처
+auto f5 = [x, &y]() { /* ... */ };                     // 혼합 캡처
+
+// 초기화 캡처 (C++14)
+auto f6 = [ptr = std::make_unique<int>(42)]() {
+    std::cout << *ptr << std::endl;
+};
+
+// 제네릭 람다 (C++14)
+auto generic = [](auto x, auto y) {
+    return x + y;
+};
+```
+
+---
+
+## 18. 모던 C++ (C++11/14/17/20/23)
+
+### 18.1 C++11 핵심 기능
+
+```cpp
+// auto
+auto x = 42;
+auto d = 3.14;
+auto s = std::string("hello");
+
+// decltype
+int i = 0;
+decltype(i) j = 1;
+
+// 범위 기반 for
+std::vector<int> vec = {1, 2, 3};
+for (const auto& elem : vec) {
+    std::cout << elem << std::endl;
+}
+
+// nullptr
+int* ptr = nullptr;
+
+// constexpr
+constexpr int factorial(int n) {
+    return n <= 1 ? 1 : n * factorial(n - 1);
+}
+
+// 초기화 리스트
+std::vector<int> v = {1, 2, 3, 4, 5};
+
+// 위임 생성자
+class MyClass {
+public:
+    MyClass() : MyClass(0, 0) {}
+    MyClass(int x) : MyClass(x, 0) {}
+    MyClass(int x, int y) { /* 주 생성자 */ }
+};
+```
+
+### 18.2 C++14
+
+```cpp
+// 제네릭 람다
+auto lambda = [](auto x, auto y) { return x + y; };
+
+// 람다 초기화 캡처
+auto ptr = std::make_unique<int>(10);
+auto lambda2 = [ptr = std::move(ptr)]() {
+    std::cout << *ptr << std::endl;
+};
+
+// 반환 타입 추론
+auto func(int x) {
+    if (x > 0) return x;
+    return -x;
+}
+
+// 이진 리터럴
+int binary = 0b1010;
+
+// 숫자 구분자
+int million = 1'000'000;
+```
+
+### 18.3 C++17
+
+```cpp
+// 구조화된 바인딩
+std::map<std::string, int> m = {{"a", 1}, {"b", 2}};
+for (const auto& [key, value] : m) {
+    std::cout << key << ": " << value << std::endl;
+}
+
+// if/switch 초기화
+if (auto it = m.find("a"); it != m.end()) {
+    std::cout << it->second << std::endl;
+}
+
+// std::optional
+std::optional<int> maybe_int = find_value();
+if (maybe_int) {
+    std::cout << *maybe_int << std::endl;
+}
+
+// std::variant
+std::variant<int, std::string> v = 42;
+v = "hello";
+
+// std::any
+std::any a = 1;
+a = 3.14;
+a = std::string("hello");
+
+// 폴드 표현식
+template<typename... Args>
+auto sum(Args... args) {
+    return (args + ...);
+}
+```
+
+### 18.4 C++20
+
+```cpp
+// Concepts
+template<typename T>
+concept Numeric = std::is_arithmetic_v<T>;
+
+template<Numeric T>
+T add(T a, T b) {
+    return a + b;
+}
+
+// Ranges
+std::vector<int> vec = {1, 2, 3, 4, 5};
+auto result = vec | std::views::filter([](int x) { return x % 2 == 0; })
+                  | std::views::transform([](int x) { return x * 2; });
+
+// Coroutines
+generator<int> fibonacci() {
+    int a = 0, b = 1;
+    while (true) {
+        co_yield a;
+        auto next = a + b;
+        a = b;
+        b = next;
+    }
+}
+
+// Modules
+import std.core;
+
+// 삼원 비교 연산자 <=>
+auto operator<=>(const Point&) const = default;
+```
+
+---
+
+## 19. 동시성과 멀티스레딩
+
+```cpp
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <future>
+
+// 스레드 생성
+void task() {
+    std::cout << "Thread ID: " << std::this_thread::get_id() << std::endl;
+}
+
+std::thread t(task);
+t.join();
+
+// 뮤텍스
+std::mutex mtx;
+int shared_data = 0;
+
+void increment() {
+    std::lock_guard<std::mutex> lock(mtx);
+    shared_data++;
+}
+
+// 조건 변수
+std::condition_variable cv;
+bool ready = false;
+
+void wait_for_signal() {
+    std::unique_lock<std::mutex> lock(mtx);
+    cv.wait(lock, []{ return ready; });
+}
+
+void send_signal() {
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        ready = true;
+    }
+    cv.notify_one();
+}
+
+// future/promise
+std::promise<int> prom;
+std::future<int> fut = prom.get_future();
+
+std::thread([](std::promise<int> p) {
+    p.set_value(42);
+}, std::move(prom)).detach();
+
+std::cout << fut.get() << std::endl;
+
+// async
+auto future = std::async(std::launch::async, []() {
+    return 42;
+});
+std::cout << future.get() << std::endl;
+```
+
+---
+
+## 20. 메타프로그래밍과 고급 기법
+
+```cpp
+// SFINAE
+template<typename T>
+typename std::enable_if<std::is_integral<T>::value, T>::type
+twice(T value) {
+    return value * 2;
+}
+
+// constexpr if (C++17)
+template<typename T>
+auto getValue(T t) {
+    if constexpr (std::is_pointer_v<T>) {
+        return *t;
+    } else {
+        return t;
+    }
+}
+
+// 타입 특성
+template<typename T>
+struct is_pointer : std::false_type {};
+
+template<typename T>
+struct is_pointer<T*> : std::true_type {};
+
+// CRTP 패턴
+template<typename Derived>
+class Base {
+public:
+    void interface() {
+        static_cast<Derived*>(this)->implementation();
+    }
+};
+
+class Derived : public Base<Derived> {
+public:
+    void implementation() {
+        std::cout << "Derived implementation\n";
+    }
+};
+```
+
+---
+
+## 결론
+
+C++은 강력하고 유연한 언어로, 이 가이드는 다음을 다룹니다:
+
+1. **기초**: 입출력, 참조자, 함수 오버로딩
+2. **OOP**: 클래스, 상속, 다형성
+3. **템플릿**: 제네릭 프로그래밍, STL
+4. **모던 C++**: 스마트 포인터, 이동 의미론, 람다
+5. **고급**: 동시성, 메타프로그래밍
+
+**학습 순서**: 1→5→7→9→10→11→15→16→17→18
+
+계속 연습하며 모던 C++의 강력함을 경험하세요!
