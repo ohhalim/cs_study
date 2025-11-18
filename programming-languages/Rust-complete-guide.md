@@ -1678,6 +1678,8 @@ println!("Result: {}", *counter.lock().unwrap());
 
 ## 19. 비동기 프로그래밍
 
+### 19.1 Async/Await 기초
+
 ```rust
 use tokio;
 
@@ -1708,17 +1710,319 @@ async fn main() {
 // 여러 태스크 동시 실행
 use tokio::join;
 
-async fn task1() {
-    // ...
+async fn task1() -> i32 {
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    42
 }
 
-async fn task2() {
-    // ...
+async fn task2() -> String {
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+    "done".to_string()
 }
 
 #[tokio::main]
 async fn main() {
     let (result1, result2) = join!(task1(), task2());
+    println!("{} {}", result1, result2);
+}
+```
+
+### 19.2 Future 트레이트 깊이 이해
+
+```rust
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+// Future의 실제 정의
+pub trait Future {
+    type Output;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output>;
+}
+
+// 커스텀 Future 구현
+struct TimerFuture {
+    start: std::time::Instant,
+    duration: std::time::Duration,
+}
+
+impl Future for TimerFuture {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.start.elapsed() >= self.duration {
+            Poll::Ready(())
+        } else {
+            // Waker를 저장해서 나중에 깨울 수 있도록
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
+    }
+}
+
+// async 함수는 Future를 반환
+async fn example() -> i32 {
+    42
+}
+
+// 위 코드는 실제로 이렇게 변환됨:
+fn example() -> impl Future<Output = i32> {
+    async move { 42 }
+}
+```
+
+### 19.3 Pinning (고정) - 가장 어려운 개념
+
+```rust
+use std::pin::Pin;
+use std::marker::PhantomPinned;
+
+// Pin이 필요한 이유: 자기 참조 구조체
+struct SelfReferential {
+    data: String,
+    pointer: *const String,  // data를 가리킴
+    _pin: PhantomPinned,
+}
+
+impl SelfReferential {
+    fn new(text: String) -> Pin<Box<Self>> {
+        let mut boxed = Box::pin(SelfReferential {
+            data: text,
+            pointer: std::ptr::null(),
+            _pin: PhantomPinned,
+        });
+
+        // 안전하지 않지만 필요한 작업
+        unsafe {
+            let ptr: *const String = &boxed.data;
+            let mut_ref: Pin<&mut Self> = Pin::as_mut(&mut boxed);
+            Pin::get_unchecked_mut(mut_ref).pointer = ptr;
+        }
+
+        boxed
+    }
+
+    fn get_data(self: Pin<&Self>) -> &str {
+        &self.data
+    }
+
+    fn get_pointer_data(self: Pin<&Self>) -> &str {
+        unsafe { &*self.pointer }
+    }
+}
+
+// Pin의 보장: 메모리 위치가 고정됨
+// 이동하면 포인터가 무효화되므로 Pin으로 방지
+```
+
+### 19.4 실전 Async 에러 처리
+
+```rust
+use tokio;
+use std::error::Error;
+
+// async + Result 조합
+async fn fetch_user(id: u64) -> Result<User, Box<dyn Error>> {
+    let url = format!("https://api.example.com/users/{}", id);
+    let response = reqwest::get(&url).await?;
+
+    if !response.status().is_success() {
+        return Err(format!("HTTP error: {}", response.status()).into());
+    }
+
+    let user: User = response.json().await?;
+    Ok(user)
+}
+
+// 여러 async 작업의 에러 처리
+async fn process_users() -> Result<(), Box<dyn Error>> {
+    let user1 = fetch_user(1).await?;  // ? 연산자 사용
+    let user2 = fetch_user(2).await?;
+
+    println!("Users: {:?} {:?}", user1, user2);
+    Ok(())
+}
+
+// 병렬 처리 + 에러 처리
+use tokio::try_join;
+
+async fn parallel_fetch() -> Result<(User, User), Box<dyn Error>> {
+    // 둘 중 하나라도 실패하면 전체 실패
+    let (user1, user2) = try_join!(
+        fetch_user(1),
+        fetch_user(2)
+    )?;
+
+    Ok((user1, user2))
+}
+
+// select! 매크로 - 먼저 완료되는 것 선택
+use tokio::select;
+
+async fn race_condition() {
+    let result = select! {
+        res1 = fetch_user(1) => res1,
+        res2 = fetch_user(2) => res2,
+        _ = tokio::time::sleep(tokio::time::Duration::from_secs(5)) => {
+            Err("Timeout".into())
+        }
+    };
+}
+```
+
+### 19.5 Async 채널과 동시성
+
+```rust
+use tokio::sync::{mpsc, oneshot};
+
+// Multiple Producer, Single Consumer
+async fn mpsc_example() {
+    let (tx, mut rx) = mpsc::channel(100);
+
+    // 생산자 여러 개
+    for i in 0..10 {
+        let tx_clone = tx.clone();
+        tokio::spawn(async move {
+            tx_clone.send(i).await.unwrap();
+        });
+    }
+    drop(tx);  // 원본 송신자 닫기
+
+    // 소비자
+    while let Some(value) = rx.recv().await {
+        println!("Received: {}", value);
+    }
+}
+
+// One-shot 채널
+async fn oneshot_example() {
+    let (tx, rx) = oneshot::channel();
+
+    tokio::spawn(async move {
+        // 계산 수행
+        let result = expensive_computation().await;
+        tx.send(result).unwrap();
+    });
+
+    // 결과 대기
+    match rx.await {
+        Ok(result) => println!("Got: {}", result),
+        Err(_) => println!("Sender dropped"),
+    }
+}
+
+// Broadcast 채널
+use tokio::sync::broadcast;
+
+async fn broadcast_example() {
+    let (tx, mut rx1) = broadcast::channel(16);
+    let mut rx2 = tx.subscribe();
+
+    tokio::spawn(async move {
+        while let Ok(msg) = rx1.recv().await {
+            println!("Receiver 1: {}", msg);
+        }
+    });
+
+    tokio::spawn(async move {
+        while let Ok(msg) = rx2.recv().await {
+            println!("Receiver 2: {}", msg);
+        }
+    });
+
+    tx.send("Hello").unwrap();
+    tx.send("World").unwrap();
+}
+```
+
+### 19.6 Async 스트림 (Stream)
+
+```rust
+use tokio_stream::{Stream, StreamExt};
+use std::pin::Pin;
+
+// Stream 트레이트
+trait Stream {
+    type Item;
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>)
+        -> Poll<Option<Self::Item>>;
+}
+
+// 실전 스트림 사용
+async fn stream_example() {
+    let stream = tokio_stream::iter(vec![1, 2, 3, 4, 5]);
+
+    tokio::pin!(stream);
+
+    while let Some(value) = stream.next().await {
+        println!("{}", value);
+    }
+}
+
+// 스트림 변환
+async fn stream_transform() {
+    let numbers = tokio_stream::iter(1..=10);
+
+    let doubled = numbers
+        .map(|x| x * 2)
+        .filter(|x| x % 4 == 0)
+        .take(3);
+
+    tokio::pin!(doubled);
+
+    while let Some(value) = doubled.next().await {
+        println!("{}", value);  // 4, 8, 12
+    }
+}
+```
+
+### 19.7 Tokio 런타임 심화
+
+```rust
+use tokio::runtime::{Runtime, Builder};
+
+// 커스텀 런타임
+fn custom_runtime() {
+    let rt = Builder::new_multi_thread()
+        .worker_threads(4)
+        .thread_name("my-custom-thread")
+        .thread_stack_size(3 * 1024 * 1024)
+        .build()
+        .unwrap();
+
+    rt.block_on(async {
+        println!("Running on custom runtime");
+    });
+}
+
+// 현재 스레드 런타임 (단일 스레드)
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+    // 단일 스레드에서 실행
+}
+
+// 작업 스폰
+async fn spawn_tasks() {
+    let handle = tokio::spawn(async {
+        // 백그라운드 작업
+        expensive_computation().await
+    });
+
+    // 다른 작업 수행...
+
+    // 결과 대기
+    let result = handle.await.unwrap();
+}
+
+// 블로킹 작업 처리
+async fn blocking_task() {
+    let result = tokio::task::spawn_blocking(|| {
+        // CPU 집약적 작업 또는 블로킹 I/O
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        42
+    }).await.unwrap();
+
+    println!("Blocking task result: {}", result);
 }
 ```
 
@@ -1751,33 +2055,82 @@ pub fn hello_macro_derive(input: TokenStream) -> TokenStream {
 }
 ```
 
-### 20.2 unsafe Rust
+### 20.2 unsafe Rust - 완전 가이드
+
+**왜 unsafe가 필요한가?**
 
 ```rust
-// 원시 포인터
+// 1. 원시 포인터 역참조
 let mut num = 5;
-let r1 = &num as *const i32;
-let r2 = &mut num as *mut i32;
+let r1 = &num as *const i32;  // 불변 원시 포인터
+let r2 = &mut num as *mut i32;  // 가변 원시 포인터
 
+// 원시 포인터의 특징:
+// - null 가능, 빌림 검사 무시, 자동 정리 안됨, 데이터 레이스 가능
 unsafe {
     println!("r1: {}", *r1);
     *r2 = 10;
 }
 
-// unsafe 함수
-unsafe fn dangerous() {}
+// 2. unsafe 함수/메서드 호출
+unsafe fn dangerous() {
+    println!("Dangerous operation!");
+}
 
 unsafe {
     dangerous();
 }
 
-// 외부 함수 인터페이스 (FFI)
+// 3. 가변 정적 변수 접근
+static mut COUNTER: u32 = 0;
+
+fn increment() {
+    unsafe {
+        COUNTER += 1;
+    }
+}
+
+// 4. unsafe 트레이트 구현
+unsafe trait Foo {}
+unsafe impl Foo for i32 {}
+```
+
+**안전한 추상화 만들기**
+
+```rust
+use std::slice;
+
+// 원시 포인터를 사용하지만 안전한 API 제공
+fn split_at_mut(slice: &mut [i32], mid: usize) -> (&mut [i32], &mut [i32]) {
+    let len = slice.len();
+    let ptr = slice.as_mut_ptr();
+    assert!(mid <= len);
+
+    unsafe {
+        (
+            slice::from_raw_parts_mut(ptr, mid),
+            slice::from_raw_parts_mut(ptr.add(mid), len - mid),
+        )
+    }
+}
+```
+
+**FFI (Foreign Function Interface)**
+
+```rust
 extern "C" {
     fn abs(input: i32) -> i32;
 }
 
-unsafe {
-    println!("{}", abs(-3));
+#[no_mangle]
+pub extern "C" fn call_from_c() -> i32 {
+    42
+}
+
+#[repr(C)]
+struct Point {
+    x: f64,
+    y: f64,
 }
 ```
 

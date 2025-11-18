@@ -1806,7 +1806,81 @@ sys.version
 
 ## 18. 동시성과 병렬성
 
-### 18.1 스레딩
+### 18.1 GIL (Global Interpreter Lock) - 필수 이해
+
+**⚠️ Python의 가장 중요한 제약사항**
+
+```python
+# GIL이란?
+# - CPython 인터프리터가 한 번에 하나의 스레드만 Python 바이트코드를 실행하도록 하는 뮤텍스
+# - 멀티스레딩으로 CPU-bound 작업을 병렬화할 수 없음!
+# - I/O-bound 작업에는 문제 없음
+
+import threading
+import time
+
+# ❌ GIL 때문에 느린 예시 (CPU-bound)
+def cpu_bound_task():
+    total = 0
+    for i in range(10_000_000):
+        total += i
+    return total
+
+# 싱글 스레드
+start = time.time()
+cpu_bound_task()
+cpu_bound_task()
+print(f"Single thread: {time.time() - start:.2f}s")  # 약 1.2초
+
+# 멀티 스레드 (GIL 때문에 더 느림!)
+start = time.time()
+threads = []
+for _ in range(2):
+    t = threading.Thread(target=cpu_bound_task)
+    t.start()
+    threads.append(t)
+for t in threads:
+    t.join()
+print(f"Multi thread: {time.time() - start:.2f}s")  # 약 1.4초 (더 느림!)
+
+# ✅ I/O-bound 작업은 GIL 영향 없음
+import requests
+
+def io_bound_task(url):
+    response = requests.get(url)
+    return len(response.content)
+
+# 멀티 스레드가 훨씬 빠름
+urls = ["https://example.com"] * 10
+start = time.time()
+with concurrent.futures.ThreadPoolExecutor() as executor:
+    results = executor.map(io_bound_task, urls)
+print(f"I/O-bound with threads: {time.time() - start:.2f}s")
+```
+
+**GIL 우회 방법:**
+
+| 작업 종류 | 해결책 | 이유 |
+|----------|--------|------|
+| CPU-bound | `multiprocessing` | 별도 프로세스 = 별도 GIL |
+| I/O-bound | `threading` | I/O 대기 중 GIL 해제 |
+| 계산 집약적 | C 확장, Cython, NumPy | GIL 없이 실행 |
+| 최신 비동기 | `asyncio` | 협력적 멀티태스킹 |
+
+```python
+# CPU-bound: multiprocessing 사용
+from multiprocessing import Pool
+
+def cpu_task(n):
+    return sum(i*i for i in range(n))
+
+if __name__ == '__main__':
+    with Pool(4) as p:
+        results = p.map(cpu_task, [10_000_000] * 4)
+    print(results)  # 4배 빠름!
+```
+
+### 18.2 스레딩 (I/O-bound 작업용)
 
 ```python
 import threading
@@ -1814,7 +1888,7 @@ import time
 
 def worker(name):
     print(f"Worker {name} starting")
-    time.sleep(2)
+    time.sleep(2)  # I/O 대기 (GIL 해제됨)
     print(f"Worker {name} done")
 
 threads = []
@@ -1826,7 +1900,7 @@ for i in range(5):
 for t in threads:
     t.join()
 
-# Lock
+# Lock (데이터 레이스 방지)
 lock = threading.Lock()
 shared_data = 0
 
@@ -1834,6 +1908,34 @@ def increment():
     global shared_data
     with lock:
         shared_data += 1
+
+# RLock (재진입 가능 락)
+rlock = threading.RLock()
+
+def recursive_function(n):
+    with rlock:
+        if n > 0:
+            recursive_function(n - 1)
+
+# Semaphore (동시 접근 제한)
+semaphore = threading.Semaphore(3)  # 최대 3개 스레드
+
+def limited_access():
+    with semaphore:
+        print(f"Accessing resource")
+        time.sleep(1)
+
+# Event (스레드 간 신호)
+event = threading.Event()
+
+def waiter():
+    print("Waiting for event")
+    event.wait()
+    print("Event received!")
+
+def setter():
+    time.sleep(2)
+    event.set()
 ```
 
 ### 18.2 멀티프로세싱
@@ -1954,7 +2056,223 @@ class Drawable(Protocol):
 
 ## 20. 고급 기능과 패턴
 
-### 20.1 메타클래스
+### 20.1 메모리 관리 - Python 내부 동작
+
+**참조 카운팅 (Reference Counting)**
+
+```python
+import sys
+
+# 참조 카운트 확인
+a = []
+print(sys.getrefcount(a))  # 2 (a + getrefcount 매개변수)
+
+b = a  # 참조 추가
+print(sys.getrefcount(a))  # 3
+
+del b  # 참조 제거
+print(sys.getrefcount(a))  # 2
+
+# 참조 카운트가 0이 되면 즉시 메모리 해제
+```
+
+**순환 참조 문제**
+
+```python
+# ❌ 순환 참조 - 메모리 누수 가능
+class Node:
+    def __init__(self, value):
+        self.value = value
+        self.next = None
+
+# 순환 구조 생성
+node1 = Node(1)
+node2 = Node(2)
+node1.next = node2
+node2.next = node1  # 순환!
+
+# node1, node2를 삭제해도 서로 참조하므로 ref count가 0이 안됨
+del node1, node2  # 메모리 누수!
+
+# ✅ 해결책 1: weakref 사용
+import weakref
+
+class Node:
+    def __init__(self, value):
+        self.value = value
+        self.next = None  # weakref.ref 사용
+
+node1 = Node(1)
+node2 = Node(2)
+node1.next = weakref.ref(node2)
+node2.next = weakref.ref(node1)
+
+# ✅ 해결책 2: 가비지 컬렉터가 자동 처리
+import gc
+gc.collect()  # 순환 참조 수집
+```
+
+**가비지 컬렉터 (Garbage Collector)**
+
+```python
+import gc
+
+# GC 상태 확인
+print(gc.get_count())  # (threshold0, threshold1, threshold2)
+print(gc.get_threshold())  # (700, 10, 10)
+
+# GC 수동 실행
+collected = gc.collect()
+print(f"Collected {collected} objects")
+
+# GC 비활성화/활성화 (성능 최적화)
+gc.disable()
+# ... 순환 참조 없는 코드 실행
+gc.enable()
+
+# 추적 가능한 객체 확인
+print(len(gc.get_objects()))  # 모든 객체 수
+
+# 순환 참조 찾기
+gc.set_debug(gc.DEBUG_SAVEALL)
+gc.collect()
+for obj in gc.garbage:
+    print(obj)
+```
+
+**__del__ 메서드의 위험성**
+
+```python
+# ❌ __del__은 피해야 함
+class BadResource:
+    def __del__(self):
+        print("Cleaning up")
+        # 문제점:
+        # 1. 호출 시점 불확실
+        # 2. 순환 참조 시 호출 안될 수 있음
+        # 3. 예외 발생 시 무시됨
+
+# ✅ 대신 컨텍스트 매니저 사용
+class GoodResource:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        print("Cleaning up")  # 확실히 호출됨
+        return False
+
+with GoodResource() as resource:
+    # 사용
+    pass
+# __exit__ 자동 호출
+```
+
+**메모리 프로파일링**
+
+```python
+# memory_profiler 사용
+# pip install memory-profiler
+
+from memory_profiler import profile
+
+@profile
+def memory_heavy_function():
+    huge_list = [i for i in range(1000000)]
+    return sum(huge_list)
+
+# 실행: python -m memory_profiler script.py
+
+# tracemalloc (내장)
+import tracemalloc
+
+tracemalloc.start()
+
+# 메모리 사용량 많은 코드
+data = [i**2 for i in range(1000000)]
+
+current, peak = tracemalloc.get_traced_memory()
+print(f"Current: {current / 1024 / 1024:.2f} MB")
+print(f"Peak: {peak / 1024 / 1024:.2f} MB")
+
+tracemalloc.stop()
+
+# 스냅샷 비교
+snapshot1 = tracemalloc.take_snapshot()
+# ... 코드 실행
+snapshot2 = tracemalloc.take_snapshot()
+
+top_stats = snapshot2.compare_to(snapshot1, 'lineno')
+for stat in top_stats[:10]:
+    print(stat)
+```
+
+**성능 최적화 팁**
+
+```python
+# 1. 리스트 컴프리헨션 vs map/filter
+# 리스트 컴프리헨션이 약간 빠름
+import timeit
+
+# 리스트 컴프리헨션
+def list_comp():
+    return [x*2 for x in range(1000)]
+
+# map
+def map_func():
+    return list(map(lambda x: x*2, range(1000)))
+
+print(timeit.timeit(list_comp, number=10000))  # 더 빠름
+print(timeit.timeit(map_func, number=10000))
+
+# 2. 제너레이터로 메모리 절약
+def huge_range(n):
+    for i in range(n):
+        yield i * i
+
+# 메모리 사용량 비교
+import sys
+list_version = [i*i for i in range(10000)]
+gen_version = (i*i for i in range(10000))
+
+print(sys.getsizeof(list_version))  # 약 87KB
+print(sys.getsizeof(gen_version))   # 약 112 bytes!
+
+# 3. __slots__ 메모리 절약
+class WithoutSlots:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+class WithSlots:
+    __slots__ = ['x', 'y']
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+import sys
+obj1 = WithoutSlots(1, 2)
+obj2 = WithSlots(1, 2)
+
+print(sys.getsizeof(obj1) + sys.getsizeof(obj1.__dict__))  # 더 큼
+print(sys.getsizeof(obj2))  # 약 40% 작음
+
+# 4. intern 문자열 메모리 절약
+import sys
+
+a = "hello"
+b = "hello"
+print(a is b)  # True (자동 intern)
+
+# 동적 문자열
+c = "".join(["h", "e", "l", "l", "o"])
+print(a is c)  # False
+
+# 명시적 intern
+d = sys.intern(c)
+print(a is d)  # True - 메모리 절약
+```
+
+### 20.2 메타클래스
 
 ```python
 class Meta(type):

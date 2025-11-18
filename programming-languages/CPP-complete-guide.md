@@ -2611,37 +2611,312 @@ auto sum(Args... args) {
 
 ### 18.4 C++20
 
+**Concepts (개념) - 템플릿 제약의 혁명**
+
 ```cpp
-// Concepts
+// 기본 Concepts
 template<typename T>
 concept Numeric = std::is_arithmetic_v<T>;
 
-template<Numeric T>
+template<typename T>
+concept Integral = std::is_integral_v<T>;
+
+template<typename T>
+concept FloatingPoint = std::is_floating_point_v<T>;
+
+// Concept 사용법 1: requires 절
+template<typename T>
+requires Numeric<T>
 T add(T a, T b) {
     return a + b;
 }
 
-// Ranges
-std::vector<int> vec = {1, 2, 3, 4, 5};
-auto result = vec | std::views::filter([](int x) { return x % 2 == 0; })
-                  | std::views::transform([](int x) { return x * 2; });
+// 사용법 2: 축약 함수 템플릿 (가장 간결)
+template<Numeric T>
+T multiply(T a, T b) {
+    return a * b;
+}
 
-// Coroutines
-generator<int> fibonacci() {
+// 사용법 3: 후행 requires
+template<typename T>
+T divide(T a, T b) requires Numeric<T> {
+    return a / b;
+}
+
+// 사용법 4: auto 매개변수 (C++20)
+auto process(Numeric auto value) {
+    return value * 2;
+}
+
+// 복합 Concepts
+template<typename T>
+concept SignedIntegral = Integral<T> && std::is_signed_v<T>;
+
+template<typename T>
+concept Comparable = requires(T a, T b) {
+    { a == b } -> std::convertible_to<bool>;
+    { a != b } -> std::convertible_to<bool>;
+    { a < b } -> std::convertible_to<bool>;
+    { a > b } -> std::convertible_to<bool>;
+};
+
+// 실전 Concept 예시
+template<typename T>
+concept Container = requires(T t) {
+    typename T::value_type;        // 중첩 타입 요구
+    typename T::iterator;
+    { t.begin() } -> std::same_as<typename T::iterator>;
+    { t.end() } -> std::same_as<typename T::iterator>;
+    { t.size() } -> std::convertible_to<size_t>;
+};
+
+template<Container C>
+void print_container(const C& container) {
+    for (const auto& elem : container) {
+        std::cout << elem << " ";
+    }
+    std::cout << "\n";
+}
+
+// Iterator Concept
+template<typename It>
+concept ForwardIterator = requires(It it) {
+    { ++it } -> std::same_as<It&>;
+    { *it };
+    { it == it } -> std::convertible_to<bool>;
+};
+
+// 다중 Concept 제약
+template<typename T>
+concept Addable = requires(T a, T b) {
+    { a + b } -> std::same_as<T>;
+};
+
+template<typename T>
+concept Multipliable = requires(T a, T b) {
+    { a * b } -> std::same_as<T>;
+};
+
+template<typename T>
+requires Addable<T> && Multipliable<T>
+T compute(T a, T b, T c) {
+    return a * b + c;
+}
+
+// Subsumption (포섭)
+template<typename T>
+concept A = std::is_integral_v<T>;
+
+template<typename T>
+concept B = A<T> && sizeof(T) >= 4;  // B는 A를 포함
+
+// B가 더 구체적이므로 우선 선택됨
+void func(A auto x) { std::cout << "A\n"; }
+void func(B auto x) { std::cout << "B\n"; }  // int는 여기로
+
+// Concepts의 장점
+// 1. 명확한 에러 메시지
+template<typename T>
+concept Printable = requires(T t) {
+    { std::cout << t };
+};
+
+template<Printable T>
+void print(const T& value) {  // Printable이 아니면 명확한 에러
+    std::cout << value << "\n";
+}
+
+// 2. 오버로딩 개선
+template<Integral T>
+T abs(T value) {
+    return value < 0 ? -value : value;
+}
+
+template<FloatingPoint T>
+T abs(T value) {
+    return std::fabs(value);
+}
+```
+
+**constexpr vs consteval vs constinit (C++20)**
+
+```cpp
+// constexpr: 컴파일 타임 또는 런타임 가능
+constexpr int square(int x) {
+    return x * x;
+}
+
+constexpr int a = square(5);  // 컴파일 타임
+int b;
+std::cin >> b;
+int c = square(b);  // 런타임도 OK
+
+// consteval: 반드시 컴파일 타임 (즉시 함수)
+consteval int cube(int x) {
+    return x * x * x;
+}
+
+constexpr int d = cube(3);  // OK
+// int e = cube(b);  // 에러! 런타임 값 불가
+
+// constinit: 변수를 컴파일 타임에 초기화 (C++20)
+constinit int global = square(10);  // 컴파일 타임 초기화
+// constinit int bad = b;  // 에러! 런타임 값 불가
+
+// global은 나중에 수정 가능 (const와 다름)
+void modify() {
+    global = 200;  // OK
+}
+
+// if consteval (C++23)
+constexpr int maybe_compile_time(int x) {
+    if consteval {
+        // 컴파일 타임 실행 중
+        return x * x;
+    } else {
+        // 런타임 실행 중
+        return x + x;
+    }
+}
+```
+
+**Ranges (범위 라이브러리)**
+
+```cpp
+#include <ranges>
+#include <vector>
+#include <algorithm>
+
+std::vector<int> vec = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+
+// 체이닝 가능한 뷰
+auto result = vec
+    | std::views::filter([](int x) { return x % 2 == 0; })
+    | std::views::transform([](int x) { return x * x; })
+    | std::views::take(3);
+
+for (int x : result) {
+    std::cout << x << " ";  // 4 16 36
+}
+
+// Lazy evaluation (지연 평가)
+auto infinite = std::views::iota(1)  // 1, 2, 3, ...
+    | std::views::transform([](int x) { return x * x; })
+    | std::views::take(5);
+
+// 알고리즘과 함께
+std::ranges::sort(vec);
+std::ranges::reverse(vec);
+auto it = std::ranges::find(vec, 5);
+```
+
+**Coroutines (코루틴)**
+
+```cpp
+#include <coroutine>
+
+// Generator 예시
+template<typename T>
+struct Generator {
+    struct promise_type {
+        T value;
+
+        Generator get_return_object() {
+            return Generator{std::coroutine_handle<promise_type>::from_promise(*this)};
+        }
+
+        std::suspend_always initial_suspend() { return {}; }
+        std::suspend_always final_suspend() noexcept { return {}; }
+        std::suspend_always yield_value(T v) {
+            value = v;
+            return {};
+        }
+
+        void return_void() {}
+        void unhandled_exception() { std::terminate(); }
+    };
+
+    std::coroutine_handle<promise_type> handle;
+
+    Generator(std::coroutine_handle<promise_type> h) : handle(h) {}
+    ~Generator() { if (handle) handle.destroy(); }
+
+    bool next() {
+        handle.resume();
+        return !handle.done();
+    }
+
+    T value() { return handle.promise().value; }
+};
+
+// 사용
+Generator<int> fibonacci() {
     int a = 0, b = 1;
     while (true) {
         co_yield a;
-        auto next = a + b;
+        int next = a + b;
         a = b;
         b = next;
     }
 }
 
-// Modules
-import std.core;
+auto gen = fibonacci();
+for (int i = 0; i < 10; i++) {
+    gen.next();
+    std::cout << gen.value() << " ";
+}
+```
 
-// 삼원 비교 연산자 <=>
-auto operator<=>(const Point&) const = default;
+**삼원 비교 연산자 <=> (Spaceship Operator)**
+
+```cpp
+struct Point {
+    int x, y;
+
+    // 자동 생성 (모든 비교 연산자)
+    auto operator<=>(const Point&) const = default;
+};
+
+// 수동 구현
+struct Person {
+    std::string name;
+    int age;
+
+    std::strong_ordering operator<=>(const Person& other) const {
+        if (auto cmp = name <=> other.name; cmp != 0)
+            return cmp;
+        return age <=> other.age;
+    }
+};
+
+// 사용
+Point p1{1, 2}, p2{3, 4};
+bool less = p1 < p2;  // OK
+bool eq = p1 == p2;   // OK
+```
+
+**Modules (모듈)**
+
+```cpp
+// math_module.cppm
+export module math;
+
+export int add(int a, int b) {
+    return a + b;
+}
+
+export int multiply(int a, int b) {
+    return a * b;
+}
+
+// main.cpp
+import math;
+
+int main() {
+    int result = add(3, 5);
+}
+
+// 장점: 헤더보다 빠른 컴파일, 매크로 오염 방지
 ```
 
 ---
@@ -2709,46 +2984,375 @@ std::cout << future.get() << std::endl;
 
 ## 20. 메타프로그래밍과 고급 기법
 
+### 20.1 SFINAE (Substitution Failure Is Not An Error)
+
 ```cpp
-// SFINAE
+// 기본 SFINAE
 template<typename T>
 typename std::enable_if<std::is_integral<T>::value, T>::type
 twice(T value) {
     return value * 2;
 }
 
-// constexpr if (C++17)
 template<typename T>
-auto getValue(T t) {
-    if constexpr (std::is_pointer_v<T>) {
-        return *t;
+typename std::enable_if<std::is_floating_point<T>::value, T>::type
+twice(T value) {
+    return value * 2.0;
+}
+
+// C++14: enable_if_t
+template<typename T>
+std::enable_if_t<std::is_integral_v<T>, T>
+process(T value) {
+    return value * 2;
+}
+
+// 반환 타입 SFINAE
+template<typename T>
+auto has_size(T t) -> decltype(t.size(), int()) {
+    return static_cast<int>(t.size());
+}
+
+int has_size(...) {
+    return -1;
+}
+
+// void_t 트릭 (C++17)
+template<typename, typename = void>
+struct has_begin : std::false_type {};
+
+template<typename T>
+struct has_begin<T, std::void_t<decltype(std::declval<T>().begin())>>
+    : std::true_type {};
+
+// C++20: Concepts로 대체 (더 명확)
+template<typename T>
+concept HasBegin = requires(T t) {
+    t.begin();
+};
+```
+
+### 20.2 템플릿 메타프로그래밍 (TMP)
+
+```cpp
+// 컴파일 타임 팩토리얼
+template<int N>
+struct Factorial {
+    static constexpr int value = N * Factorial<N-1>::value;
+};
+
+template<>
+struct Factorial<0> {
+    static constexpr int value = 1;
+};
+
+constexpr int fact5 = Factorial<5>::value;  // 120
+
+// C++14: constexpr 함수 (더 읽기 쉬움)
+constexpr int factorial(int n) {
+    return (n <= 1) ? 1 : n * factorial(n - 1);
+}
+
+// 컴파일 타임 피보나치
+template<int N>
+struct Fibonacci {
+    static constexpr int value = Fibonacci<N-1>::value + Fibonacci<N-2>::value;
+};
+
+template<> struct Fibonacci<0> { static constexpr int value = 0; };
+template<> struct Fibonacci<1> { static constexpr int value = 1; };
+
+// 타입 리스트
+template<typename... Types>
+struct TypeList {};
+
+// 타입 리스트 크기
+template<typename List>
+struct Length;
+
+template<typename... Types>
+struct Length<TypeList<Types...>> {
+    static constexpr size_t value = sizeof...(Types);
+};
+
+// N번째 타입 가져오기
+template<size_t N, typename List>
+struct TypeAt;
+
+template<typename Head, typename... Tail>
+struct TypeAt<0, TypeList<Head, Tail...>> {
+    using type = Head;
+};
+
+template<size_t N, typename Head, typename... Tail>
+struct TypeAt<N, TypeList<Head, Tail...>> {
+    using type = typename TypeAt<N-1, TypeList<Tail...>>::type;
+};
+
+// 사용
+using MyTypes = TypeList<int, double, std::string>;
+using SecondType = TypeAt<1, MyTypes>::type;  // double
+```
+
+### 20.3 고급 TMP 패턴
+
+```cpp
+// Expression Templates (표현식 템플릿)
+template<typename E>
+class VecExpression {
+public:
+    double operator[](size_t i) const {
+        return static_cast<const E&>(*this)[i];
+    }
+
+    size_t size() const {
+        return static_cast<const E&>(*this).size();
+    }
+};
+
+class Vec : public VecExpression<Vec> {
+    std::vector<double> data;
+public:
+    Vec(size_t n) : data(n) {}
+
+    double& operator[](size_t i) { return data[i]; }
+    double operator[](size_t i) const { return data[i]; }
+    size_t size() const { return data.size(); }
+
+    template<typename E>
+    Vec& operator=(const VecExpression<E>& expr) {
+        for (size_t i = 0; i < size(); ++i) {
+            data[i] = expr[i];
+        }
+        return *this;
+    }
+};
+
+template<typename E1, typename E2>
+class VecSum : public VecExpression<VecSum<E1, E2>> {
+    const E1& u;
+    const E2& v;
+public:
+    VecSum(const E1& u_, const E2& v_) : u(u_), v(v_) {}
+
+    double operator[](size_t i) const { return u[i] + v[i]; }
+    size_t size() const { return u.size(); }
+};
+
+template<typename E1, typename E2>
+VecSum<E1, E2> operator+(const VecExpression<E1>& u,
+                         const VecExpression<E2>& v) {
+    return VecSum<E1, E2>(static_cast<const E1&>(u),
+                           static_cast<const E2&>(v));
+}
+
+// 사용: v1 + v2 + v3는 임시 객체 없이 한 번에 계산됨
+Vec v1(1000), v2(1000), v3(1000);
+Vec result(1000);
+result = v1 + v2 + v3;  // 효율적!
+```
+
+### 20.4 CRTP (Curiously Recurring Template Pattern)
+
+```cpp
+// CRTP 기본
+template<typename Derived>
+class Comparab le {
+public:
+    bool operator!=(const Derived& other) const {
+        return !(static_cast<const Derived&>(*this) == other);
+    }
+
+    bool operator<=(const Derived& other) const {
+        return !(static_cast<const Derived&>(*this) > other);
+    }
+
+    bool operator>(const Derived& other) const {
+        return other < static_cast<const Derived&>(*this);
+    }
+
+    bool operator>=(const Derived& other) const {
+        return !(static_cast<const Derived&>(*this) < other);
+    }
+};
+
+class MyClass : public Comparable<MyClass> {
+    int value;
+public:
+    MyClass(int v) : value(v) {}
+
+    // == 와 < 만 구현하면 됨
+    bool operator==(const MyClass& other) const {
+        return value == other.value;
+    }
+
+    bool operator<(const MyClass& other) const {
+        return value < other.value;
+    }
+};
+
+// Mixin 패턴
+template<typename Derived>
+class Printable {
+public:
+    void print() const {
+        std::cout << static_cast<const Derived&>(*this).toString();
+    }
+};
+
+class MyData : public Printable<MyData> {
+    int data;
+public:
+    MyData(int d) : data(d) {}
+
+    std::string toString() const {
+        return "MyData: " + std::to_string(data);
+    }
+};
+```
+
+### 20.5 Tag Dispatching
+
+```cpp
+// 태그 디스패칭으로 알고리즘 선택
+template<typename Iterator>
+void advance_impl(Iterator& it, int n, std::random_access_iterator_tag) {
+    it += n;  // O(1)
+}
+
+template<typename Iterator>
+void advance_impl(Iterator& it, int n, std::bidirectional_iterator_tag) {
+    if (n >= 0) {
+        while (n--) ++it;
     } else {
-        return t;
+        while (n++) --it;
     }
 }
 
-// 타입 특성
-template<typename T>
-struct is_pointer : std::false_type {};
+template<typename Iterator>
+void advance(Iterator& it, int n) {
+    advance_impl(it, n,
+        typename std::iterator_traits<Iterator>::iterator_category());
+}
+```
 
-template<typename T>
-struct is_pointer<T*> : std::true_type {};
+### 20.6 Type Erasure (타입 소거)
 
-// CRTP 패턴
-template<typename Derived>
-class Base {
+```cpp
+// std::function 스타일 타입 소거
+class Function {
+    struct FunctionConcept {
+        virtual ~FunctionConcept() = default;
+        virtual int call(int) = 0;
+        virtual FunctionConcept* clone() const = 0;
+    };
+
+    template<typename F>
+    struct FunctionModel : FunctionConcept {
+        F func;
+        FunctionModel(F f) : func(std::move(f)) {}
+
+        int call(int x) override {
+            return func(x);
+        }
+
+        FunctionConcept* clone() const override {
+            return new FunctionModel(*this);
+        }
+    };
+
+    FunctionConcept* ptr;
+
 public:
-    void interface() {
-        static_cast<Derived*>(this)->implementation();
+    template<typename F>
+    Function(F f) : ptr(new FunctionModel<F>(std::move(f))) {}
+
+    ~Function() { delete ptr; }
+
+    Function(const Function& other) : ptr(other.ptr->clone()) {}
+
+    int operator()(int x) {
+        return ptr->call(x);
     }
 };
 
-class Derived : public Base<Derived> {
+// 사용
+Function f = [](int x) { return x * 2; };
+std::cout << f(5) << "\n";  // 10
+```
+
+### 20.7 컴파일 타임 if constexpr (C++17)
+
+```cpp
+template<typename T>
+auto getValue(T t) {
+    if constexpr (std::is_pointer_v<T>) {
+        return *t;  // 포인터면 역참조
+    } else if constexpr (std::is_same_v<T, std::string>) {
+        return t + " processed";
+    } else {
+        return t;  // 그냥 반환
+    }
+}
+
+// 재귀 출력
+template<typename T>
+void print(const T& t) {
+    std::cout << t << "\n";
+}
+
+template<typename First, typename... Rest>
+void print(const First& first, const Rest&... rest) {
+    std::cout << first << " ";
+    if constexpr (sizeof...(rest) > 0) {
+        print(rest...);
+    } else {
+        std::cout << "\n";
+    }
+}
+```
+
+### 20.8 Policy-Based Design
+
+```cpp
+// 정책 기반 설계
+template<typename OutputPolicy, typename LanguagePolicy>
+class HelloWorld : private OutputPolicy, private LanguagePolicy {
 public:
-    void implementation() {
-        std::cout << "Derived implementation\n";
+    void run() {
+        OutputPolicy::print(LanguagePolicy::message());
     }
 };
+
+class ConsoleOutput {
+protected:
+    void print(const std::string& msg) {
+        std::cout << msg << "\n";
+    }
+};
+
+class FileOutput {
+protected:
+    void print(const std::string& msg) {
+        std::ofstream("output.txt") << msg << "\n";
+    }
+};
+
+class English {
+protected:
+    std::string message() { return "Hello, World!"; }
+};
+
+class Korean {
+protected:
+    std::string message() { return "안녕하세요!"; }
+};
+
+// 사용
+HelloWorld<ConsoleOutput, English> hello_en;
+HelloWorld<FileOutput, Korean> hello_kr;
+hello_en.run();
+hello_kr.run();
 ```
 
 ---
